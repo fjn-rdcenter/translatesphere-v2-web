@@ -1,21 +1,44 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { motion, AnimatePresence } from "framer-motion"
-import { ArrowLeft, ArrowRight, Plus, Trash2, Upload, FileText, X, Check, AlertTriangle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PageTransition, SlideUp } from "@/components/ui/page-transition"
-import { Checkbox } from "@/components/ui/checkbox"
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Plus,
+  Trash2,
+  Upload,
+  FileText,
+  X,
+  Check,
+  AlertTriangle,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageTransition, SlideUp } from "@/components/ui/page-transition";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,121 +48,155 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { languages } from "@/lib/mock-data"
-import type { GlossaryTerm } from "@/lib/types"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/alert-dialog";
+import { languages } from "@/lib/mock-data";
+import type { GlossaryTerm } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export default function NewGlossaryPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const returnTo = searchParams.get("returnTo")
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
 
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [sourceLanguage, setSourceLanguage] = useState("")
-  const [targetLanguage, setTargetLanguage] = useState("")
-  const [terms, setTerms] = useState<GlossaryTerm[]>([{ id: "1", source: "", target: "" }])
-  const [importedFile, setImportedFile] = useState<File | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set())
-  const [showDeleteWarning, setShowDeleteWarning] = useState(false)
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [sourceLanguage, setSourceLanguage] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("");
+  const [terms, setTerms] = useState<GlossaryTerm[]>([
+    { id: "1", source: "", target: "" },
+  ]);
+  const [importedFile, setImportedFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
+  const [showDeleteWarning, setShowDeleteWarning] = useState(false);
+  // Track which terms have had their target manually edited
+  const [targetEditedTerms, setTargetEditedTerms] = useState<Set<string>>(
+    new Set()
+  );
 
   const addTerm = () => {
-    setTerms([...terms, { id: Date.now().toString(), source: "", target: "" }])
-  }
+    setTerms([...terms, { id: Date.now().toString(), source: "", target: "" }]);
+  };
 
   const removeTerm = (id: string) => {
     // Check if this is the last term
     if (terms.length === 1) {
-      setShowDeleteWarning(true)
-      return
+      setShowDeleteWarning(true);
+      return;
     }
-    setTerms(terms.filter((t) => t.id !== id))
-    setSelectedTerms(prev => {
-      const newSet = new Set(prev)
-      newSet.delete(id)
-      return newSet
-    })
-  }
+    setTerms(terms.filter((t) => t.id !== id));
+    setSelectedTerms((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      return newSet;
+    });
+  };
 
   const toggleTermSelection = (id: string) => {
-    setSelectedTerms(prev => {
-      const newSet = new Set(prev)
+    setSelectedTerms((prev) => {
+      const newSet = new Set(prev);
       if (newSet.has(id)) {
-        newSet.delete(id)
+        newSet.delete(id);
       } else {
-        newSet.add(id)
+        newSet.add(id);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   const toggleSelectAll = () => {
     if (selectedTerms.size === terms.length) {
-      setSelectedTerms(new Set())
+      setSelectedTerms(new Set());
     } else {
-      setSelectedTerms(new Set(terms.map(t => t.id)))
+      setSelectedTerms(new Set(terms.map((t) => t.id)));
     }
-  }
+  };
 
   const deleteSelectedTerms = () => {
     // Check if deleting all terms
     if (selectedTerms.size === terms.length) {
-      setShowDeleteWarning(true)
-      return
+      setShowDeleteWarning(true);
+      return;
     }
-    setTerms(terms.filter(t => !selectedTerms.has(t.id)))
-    setSelectedTerms(new Set())
-  }
+    setTerms(terms.filter((t) => !selectedTerms.has(t.id)));
+    setSelectedTerms(new Set());
+  };
 
   const confirmDeleteAllTerms = () => {
     // Navigate back since glossary will be deleted
-    handleBack()
-  }
+    handleBack();
+  };
 
-  const updateTerm = (id: string, field: "source" | "target", value: string) => {
-    setTerms(terms.map((t) => (t.id === id ? { ...t, [field]: value } : t)))
-  }
+  const updateTerm = (
+    id: string,
+    field: "source" | "target",
+    value: string
+  ) => {
+    const currentTerm = terms.find((t) => t.id === id);
+
+    if (field === "source" && currentTerm) {
+      // If target hasn't been manually edited, auto-fill it with source value
+      if (!targetEditedTerms.has(id)) {
+        // Auto-fill target with source value
+        setTerms(
+          terms.map((t) =>
+            t.id === id ? { ...t, source: value, target: value } : t
+          )
+        );
+      } else {
+        // Just update source
+        setTerms(terms.map((t) => (t.id === id ? { ...t, source: value } : t)));
+      }
+    } else if (field === "target") {
+      // Mark this term's target as manually edited
+      setTargetEditedTerms((prev) => new Set(prev).add(id));
+      setTerms(terms.map((t) => (t.id === id ? { ...t, target: value } : t)));
+    }
+  };
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const file = e.target.files?.[0];
     if (file && file.type === "text/plain") {
-      setImportedFile(file)
+      setImportedFile(file);
       // Simulate parsing the file
       const mockImportedTerms: GlossaryTerm[] = [
         { id: "101", source: "Contract", target: "Contrato" },
         { id: "102", source: "Agreement", target: "Acuerdo" },
         { id: "103", source: "Clause", target: "Cláusula" },
-      ]
-      setTerms([...terms.filter((t) => t.source || t.target), ...mockImportedTerms])
+      ];
+      setTerms([
+        ...terms.filter((t) => t.source || t.target),
+        ...mockImportedTerms,
+      ]);
     }
-  }
+  };
 
   const handleSave = async () => {
-    setIsSaving(true)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     if (returnTo === "translate") {
-      router.push("/dashboard/translate")
+      // Navigate back to translate page at step 1 (Glossary Selection)
+      router.push("/dashboard/translate?step=1");
     } else {
-      router.push("/dashboard/glossaries")
+      router.push("/dashboard/glossaries");
     }
-  }
+  };
 
   const handleBack = () => {
     if (returnTo === "translate") {
-      router.push("/dashboard/translate")
+      router.push("/dashboard/translate");
     } else {
-      router.push("/dashboard/glossaries")
+      router.push("/dashboard/glossaries");
     }
-  }
+  };
 
-  const validTerms = terms.filter((t) => t.source && t.target)
-  const isValid = name && sourceLanguage && targetLanguage && validTerms.length > 0
+  const validTerms = terms.filter((t) => t.source && t.target);
+  const isValid =
+    name && sourceLanguage && targetLanguage && validTerms.length > 0;
 
   return (
-    <PageTransition className="container mx-auto px-6 py-10">
+    <PageTransition className="container mx-auto px-6">
       {/* Header */}
       <SlideUp>
         <div className="flex items-center gap-4 mb-8">
@@ -147,13 +204,17 @@ export default function NewGlossaryPage() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-serif font-semibold text-foreground">Create Glossary</h1>
-            <p className="mt-1 text-muted-foreground">Build a custom terminology profile</p>
+            <h1 className="text-3xl font-serif font-semibold text-foreground">
+              Create Glossary
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              Build a custom terminology profile
+            </p>
           </div>
         </div>
       </SlideUp>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
           {/* Basic Info */}
@@ -187,8 +248,11 @@ export default function NewGlossaryPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Source Language</Label>
-                    <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
-                      <SelectTrigger className="h-12">
+                    <Select
+                      value={sourceLanguage}
+                      onValueChange={setSourceLanguage}
+                    >
+                      <SelectTrigger className="h-12 w-full">
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
@@ -202,8 +266,11 @@ export default function NewGlossaryPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Target Language</Label>
-                    <Select value={targetLanguage} onValueChange={setTargetLanguage}>
-                      <SelectTrigger className="h-12">
+                    <Select
+                      value={targetLanguage}
+                      onValueChange={setTargetLanguage}
+                    >
+                      <SelectTrigger className="h-12 w-full">
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
@@ -240,7 +307,8 @@ export default function NewGlossaryPage() {
                     {selectedTerms.size > 0 && (
                       <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg border border-border">
                         <span className="text-sm font-medium">
-                          {selectedTerms.size} term{selectedTerms.size > 1 ? 's' : ''} selected
+                          {selectedTerms.size} term
+                          {selectedTerms.size > 1 ? "s" : ""} selected
                         </span>
                         <div className="flex gap-2">
                           <Button
@@ -268,12 +336,19 @@ export default function NewGlossaryPage() {
                           <TableRow className="bg-secondary/50">
                             <TableHead className="w-12">
                               <Checkbox
-                                checked={selectedTerms.size === terms.length && terms.length > 0}
+                                checked={
+                                  selectedTerms.size === terms.length &&
+                                  terms.length > 0
+                                }
                                 onCheckedChange={toggleSelectAll}
                               />
                             </TableHead>
-                            <TableHead className="font-medium">Source Term</TableHead>
-                            <TableHead className="font-medium">Target Term</TableHead>
+                            <TableHead className="font-medium">
+                              Source Term
+                            </TableHead>
+                            <TableHead className="font-medium">
+                              Target Term
+                            </TableHead>
                             <TableHead className="w-12"></TableHead>
                           </TableRow>
                         </TableHeader>
@@ -287,20 +362,29 @@ export default function NewGlossaryPage() {
                                 exit={{ opacity: 0, height: 0 }}
                                 className={cn(
                                   "border-b border-border last:border-0",
-                                  selectedTerms.has(term.id) && "bg-secondary/30"
+                                  selectedTerms.has(term.id) &&
+                                    "bg-secondary/30"
                                 )}
                               >
                                 <TableCell className="p-2">
                                   <Checkbox
                                     checked={selectedTerms.has(term.id)}
-                                    onCheckedChange={() => toggleTermSelection(term.id)}
+                                    onCheckedChange={() =>
+                                      toggleTermSelection(term.id)
+                                    }
                                   />
                                 </TableCell>
                                 <TableCell className="p-2">
                                   <Input
                                     placeholder="Enter source term"
                                     value={term.source}
-                                    onChange={(e) => updateTerm(term.id, "source", e.target.value)}
+                                    onChange={(e) =>
+                                      updateTerm(
+                                        term.id,
+                                        "source",
+                                        e.target.value
+                                      )
+                                    }
                                     className="border-0 bg-transparent focus-visible:ring-1"
                                   />
                                 </TableCell>
@@ -308,7 +392,13 @@ export default function NewGlossaryPage() {
                                   <Input
                                     placeholder="Enter translation"
                                     value={term.target}
-                                    onChange={(e) => updateTerm(term.id, "target", e.target.value)}
+                                    onChange={(e) =>
+                                      updateTerm(
+                                        term.id,
+                                        "target",
+                                        e.target.value
+                                      )
+                                    }
                                     className="border-0 bg-transparent focus-visible:ring-1"
                                   />
                                 </TableCell>
@@ -330,7 +420,11 @@ export default function NewGlossaryPage() {
                       </Table>
                     </div>
 
-                    <Button variant="outline" onClick={addTerm} className="w-full bg-transparent">
+                    <Button
+                      variant="outline"
+                      onClick={addTerm}
+                      className="w-full bg-transparent"
+                    >
                       <Plus className="mr-2 w-4 h-4" />
                       Add Term
                     </Button>
@@ -340,7 +434,9 @@ export default function NewGlossaryPage() {
                     <div
                       className={cn(
                         "border-2 border-dashed rounded-xl p-8 text-center transition-colors",
-                        importedFile ? "border-primary bg-secondary/50" : "border-border",
+                        importedFile
+                          ? "border-primary bg-secondary/50"
+                          : "border-border"
                       )}
                     >
                       {importedFile ? (
@@ -350,9 +446,15 @@ export default function NewGlossaryPage() {
                           </div>
                           <div className="text-left">
                             <p className="font-medium">{importedFile.name}</p>
-                            <p className="text-sm text-muted-foreground">{terms.length - 1} terms imported</p>
+                            <p className="text-sm text-muted-foreground">
+                              {terms.length - 1} terms imported
+                            </p>
                           </div>
-                          <Button variant="ghost" size="icon" onClick={() => setImportedFile(null)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setImportedFile(null)}
+                          >
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
@@ -361,7 +463,8 @@ export default function NewGlossaryPage() {
                           <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
                           <p className="font-medium mb-1">Upload a .txt file</p>
                           <p className="text-sm text-muted-foreground mb-4">
-                            Format: source term | target term (one pair per line)
+                            Format: source term | target term (one pair per
+                            line)
                           </p>
                           <input
                             type="file"
@@ -371,7 +474,10 @@ export default function NewGlossaryPage() {
                             id="file-import"
                           />
                           <Button asChild variant="outline">
-                            <label htmlFor="file-import" className="cursor-pointer">
+                            <label
+                              htmlFor="file-import"
+                              className="cursor-pointer"
+                            >
                               Choose File
                             </label>
                           </Button>
@@ -381,7 +487,8 @@ export default function NewGlossaryPage() {
 
                     {importedFile && (
                       <p className="text-sm text-muted-foreground text-center">
-                        You can also add more terms manually in the Manual Entry tab
+                        You can also add more terms manually in the Manual Entry
+                        tab
                       </p>
                     )}
                   </TabsContent>
@@ -392,9 +499,9 @@ export default function NewGlossaryPage() {
         </div>
 
         {/* Sidebar Preview */}
-        <div className="space-y-6">
+        <div className="space-y-6 sticky top-24 self-start">
           <SlideUp delay={0.3}>
-            <Card className="sticky top-24">
+            <Card>
               <CardHeader>
                 <CardTitle>Preview</CardTitle>
               </CardHeader>
@@ -406,7 +513,9 @@ export default function NewGlossaryPage() {
 
                 {sourceLanguage && targetLanguage && (
                   <div className="p-4 rounded-xl bg-secondary/50">
-                    <p className="text-sm text-muted-foreground mb-1">Languages</p>
+                    <p className="text-sm text-muted-foreground mb-1">
+                      Languages
+                    </p>
                     <p className="font-medium">
                       {sourceLanguage} → {targetLanguage}
                     </p>
@@ -420,28 +529,38 @@ export default function NewGlossaryPage() {
 
                 {validTerms.length > 0 && (
                   <div className="p-4 rounded-xl bg-secondary/50">
-                    <p className="text-sm text-muted-foreground mb-2">Sample Terms</p>
-                    <div className="space-y-2">
-                      {validTerms.slice(0, 3).map((term) => (
-                        <div key={term.id} className="flex items-center gap-2 text-sm">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      All Terms ({validTerms.length})
+                    </p>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                      {validTerms.map((term) => (
+                        <div
+                          key={term.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
                           <span className="font-medium">{term.source}</span>
                           <ArrowRight className="w-3 h-3 text-muted-foreground" />
                           <span>{term.target}</span>
                         </div>
                       ))}
-                      {validTerms.length > 3 && (
-                        <p className="text-xs text-muted-foreground">+{validTerms.length - 3} more</p>
-                      )}
                     </div>
                   </div>
                 )}
 
                 <div className="pt-4 space-y-3">
-                  <Button className="w-full" disabled={!isValid || isSaving} onClick={handleSave}>
+                  <Button
+                    className="w-full"
+                    disabled={!isValid || isSaving}
+                    onClick={handleSave}
+                  >
                     {isSaving ? (
                       <motion.div
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+                        transition={{
+                          duration: 1,
+                          repeat: Number.POSITIVE_INFINITY,
+                          ease: "linear",
+                        }}
                         className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
                       />
                     ) : (
@@ -451,7 +570,11 @@ export default function NewGlossaryPage() {
                       </>
                     )}
                   </Button>
-                  <Button variant="outline" className="w-full bg-transparent" onClick={handleBack}>
+                  <Button
+                    variant="outline"
+                    className="w-full bg-transparent"
+                    onClick={handleBack}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -470,8 +593,10 @@ export default function NewGlossaryPage() {
               Delete All Terms?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Removing all terms will delete this glossary. A glossary must have at least one term to exist.
-              <br /><br />
+              Removing all terms will delete this glossary. A glossary must have
+              at least one term to exist.
+              <br />
+              <br />
               Are you sure you want to proceed? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -487,5 +612,5 @@ export default function NewGlossaryPage() {
         </AlertDialogContent>
       </AlertDialog>
     </PageTransition>
-  )
+  );
 }

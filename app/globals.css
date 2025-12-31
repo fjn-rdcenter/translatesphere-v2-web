@@ -142,11 +142,13 @@
 
 /* Soft cold-tone shadow utilities */
 .shadow-soft {
-  box-shadow: 0 2px 8px -2px rgba(100, 116, 139, 0.08), 0 4px 16px -4px rgba(100, 116, 139, 0.06);
+  box-shadow: 0 2px 8px -2px rgba(100, 116, 139, 0.08),
+    0 4px 16px -4px rgba(100, 116, 139, 0.06);
 }
 
 .shadow-soft-lg {
-  box-shadow: 0 4px 12px -2px rgba(100, 116, 139, 0.1), 0 8px 24px -4px rgba(100, 116, 139, 0.08);
+  box-shadow: 0 4px 12px -2px rgba(100, 116, 139, 0.1),
+    0 8px 24px -4px rgba(100, 116, 139, 0.08);
 }
 
 /* Custom animations */
@@ -231,4 +233,13 @@
 }
 .stagger-5 {
   animation-delay: 0.5s;
+}
+
+@keyframes toast-progress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
 }
