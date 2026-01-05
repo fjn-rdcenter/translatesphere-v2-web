@@ -51,6 +51,7 @@ export interface LoginResponse {
   token: string;
   access_token?: string; // OAuth2 standard token field
   refreshToken: string;
+  refresh_token?: string; // OAuth2 standard refresh token field
   user: {
     id: string;
     name: string;
@@ -61,7 +62,9 @@ export interface LoginResponse {
 
 export interface RefreshTokenResponse {
   token: string;
+  access_token?: string; // OAuth2 standard token field
   refreshToken: string;
+  refresh_token?: string; // OAuth2 standard refresh token field
 }
 
 // ============================================================================

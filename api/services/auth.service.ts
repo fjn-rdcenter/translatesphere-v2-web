@@ -36,6 +36,7 @@ export class AuthService {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
+          withCredentials: true, // Important: allows cookies to be set
         }
       );
       
@@ -44,11 +45,25 @@ export class AuthService {
       // Handle different response formats
       const loginData = response.data.data || response.data;
       const token = loginData.token || loginData.access_token;
+      const refreshToken = loginData.refreshToken || loginData.refresh_token;
       
-      // Store token in localStorage
+      // Store access token in localStorage
       if (token) {
         localStorage.setItem("auth_token", token);
-        console.log("💾 Token stored successfully");
+        console.log("💾 Access token stored in localStorage");
+      }
+      
+      // Store refresh token in cookie (if not already set by backend)
+      if (refreshToken) {
+        // Check if backend already set the cookie
+        const cookieExists = document.cookie.includes('refresh_token');
+        if (!cookieExists) {
+          // Set cookie with secure flags
+          document.cookie = `refresh_token=${refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+          console.log("🍪 Refresh token stored in cookie");
+        } else {
+          console.log("🍪 Refresh token already set by backend");
+        }
       }
       
       return loginData;
@@ -67,10 +82,16 @@ export class AuthService {
    */
   static async logout(): Promise<void> {
     try {
-      await apiClient.post(API_CONFIG.ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_CONFIG.ENDPOINTS.AUTH.LOGOUT, {}, {
+        withCredentials: true, // Send cookies with request
+      });
       
-      // Clear token from localStorage
+      // Clear access token from localStorage
       localStorage.removeItem("auth_token");
+      
+      // Clear refresh token cookie
+      document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      console.log("🧹 Tokens cleared");
     } catch (error) {
       ApiErrorHandler.logError(error, "AuthService.logout");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -79,22 +100,37 @@ export class AuthService {
 
   /**
    * Refresh authentication token
-   * Token should be in Authorization header (handled by axios interceptor)
+   * Refresh token should be in cookie (sent automatically by browser)
    */
   static async refreshToken(): Promise<RefreshTokenResponse> {
     try {
-      // Send empty body - token is in Authorization header
+      // Send empty body - refresh token is in cookie
       const response = await apiClient.post<ApiResponse<RefreshTokenResponse>>(
         API_CONFIG.ENDPOINTS.AUTH.REFRESH,
-        {}
+        {},
+        {
+          withCredentials: true, // Important: sends cookies with request
+        }
       );
       
-      // Update token in localStorage
-      if (response.data.data.token) {
-        localStorage.setItem("auth_token", response.data.data.token);
+      // Handle different response formats
+      const tokenData = response.data.data || response.data;
+      const newAccessToken = tokenData.token || tokenData.access_token;
+      const newRefreshToken = tokenData.refreshToken || tokenData.refresh_token;
+      
+      // Update access token in localStorage
+      if (newAccessToken) {
+        localStorage.setItem("auth_token", newAccessToken);
+        console.log("🔄 Access token refreshed");
       }
       
-      return response.data.data;
+      // Update refresh token in cookie if provided
+      if (newRefreshToken) {
+        document.cookie = `refresh_token=${newRefreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+        console.log("🍪 Refresh token updated");
+      }
+      
+      return tokenData;
     } catch (error) {
       ApiErrorHandler.logError(error, "AuthService.refreshToken");
       throw new Error(ApiErrorHandler.parseError(error));
