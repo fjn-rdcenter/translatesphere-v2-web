@@ -1,293 +1,336 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { motion } from "framer-motion"
-import { Search, Download, FileText, Check, X, Clock, Calendar, Globe } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { PageTransition, SlideUp } from "@/components/ui/page-transition"
-import { mockTranslationHistory, languages } from "@/lib/mock-data"
-import { cn } from "@/lib/utils"
+import { useState, useEffect } from "react";
+import { format } from "date-fns";
+import {
+  Search,
+  Filter,
+  Download,
+  MoreVertical,
+  ArrowUpDown,
+  FileText,
+  Trash2,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Check,
+  X,
+  Clock,
+  ArrowRight,
+} from "lucide-react";
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0 Bytes"
-  const k = 1024
-  const sizes = ["Bytes", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-const statusConfig = {
-  completed: { label: "Completed", icon: Check, className: "bg-success/10 text-success" },
-  failed: { label: "Failed", icon: X, className: "bg-destructive/10 text-destructive" },
-  translating: { label: "In Progress", icon: Clock, className: "bg-warning/10 text-warning-foreground" },
-  pending: { label: "Pending", icon: Clock, className: "bg-muted text-muted-foreground" },
-}
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { PageTransition } from "@/components/ui/page-transition";
+import { TranslationService } from "@/api/services";
+import { TranslationHistoryResponse, StatusEnum } from "@/api/types";
+import { getLanguageName } from "@/lib/utils";
 
 export default function HistoryPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [languageFilter, setLanguageFilter] = useState<string>("all")
-  const [dateFilter, setDateFilter] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("desc");
+  
+  // Real data states
+  const [jobs, setJobs] = useState<TranslationHistoryResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    size: 10,
+    total: 0,
+    totalPages: 0,
+  });
 
-  // Check for URL filter parameter and set initial state
+  const fetchJobs = async () => {
+    setLoading(true);
+    try {
+      const response = await TranslationService.getTranslationHistory();
+      // Client-side pagination since API is currently non-paginated array
+      setJobs(response);
+      setPagination({
+        ...pagination,
+        total: response.length,
+        totalPages: Math.ceil(response.length / pagination.size),
+      });
+    } catch (error) {
+      console.error("Failed to fetch jobs", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const filter = searchParams.get("filter")
-    if (filter === "month") {
-      setDateFilter("month")
+    fetchJobs();
+  }, []);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > 0 && newPage <= pagination.totalPages) {
+      setPagination({ ...pagination, page: newPage });
     }
-  }, [searchParams])
+  };
 
-  const filteredHistory = mockTranslationHistory.filter((job) => {
-    const matchesSearch = job.documentName.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || job.status === statusFilter
-    const matchesLanguage =
-      languageFilter === "all" || job.sourceLanguage === languageFilter || job.targetLanguage === languageFilter
-
-    let matchesDate = true
-    if (dateFilter !== "all") {
-      const now = new Date()
-      const jobDate = new Date(job.startedAt)
-      if (dateFilter === "today") {
-        matchesDate = jobDate.toDateString() === now.toDateString()
-      } else if (dateFilter === "week") {
-        const weekAgo = new Date(now.setDate(now.getDate() - 7))
-        matchesDate = jobDate >= weekAgo
-      } else if (dateFilter === "month") {
-        const monthAgo = new Date(now.setMonth(now.getMonth() - 1))
-        matchesDate = jobDate >= monthAgo
-      }
+  const handleDownload = async (job: TranslationHistoryResponse) => {
+    if (job.status !== "completed") return;
+    try {
+      const blob = await TranslationService.downloadTranslatedDocument(job.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `translated_${job.id}.docx`; 
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed", error);
     }
+  };
 
-    return matchesSearch && matchesStatus && matchesLanguage && matchesDate
-  })
+  // Client-side filtering and pagination
+  const filteredHistory = jobs.filter((job) => {
+    const matchesStatus =
+      statusFilter === "all" || job.status === statusFilter;
+     // Add search logic if needed
+     const matchesSearch = searchTerm === "" || job.documentName.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
 
-  const clearFilters = () => {
-    setSearchQuery("")
-    setStatusFilter("all")
-    setLanguageFilter("all")
-    setDateFilter("all")
-  }
+  const paginatedHistory = filteredHistory.slice(
+      (pagination.page - 1) * pagination.size,
+      pagination.page * pagination.size
+  );
 
-  const hasActiveFilters = searchQuery || statusFilter !== "all" || languageFilter !== "all" || dateFilter !== "all"
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100/80";
+      case "translating":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-100/80";
+      case "pending":
+        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-100/80";
+      case "failed":
+        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100/80";
+      default:
+        return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-zinc-100/80";
+    }
+  };
 
   return (
-    <PageTransition className="container mx-auto px-6 py-10">
-      {/* Header */}
-      <SlideUp>
-        <div className="mb-8">
-          <h1 className="text-3xl font-serif font-semibold text-foreground">Translation History</h1>
-          <p className="mt-1 text-muted-foreground">View and manage your past translations</p>
-        </div>
-      </SlideUp>
-
-      {/* Filters */}
-      <SlideUp delay={0.1}>
-        <Card className="mb-8">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              {/* Search */}
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  placeholder="Search by document name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-11 bg-background"
-                />
-              </div>
-
-              {/* Status Filter */}
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-40 h-11">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="translating">In Progress</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Language Filter */}
-              <Select value={languageFilter} onValueChange={setLanguageFilter}>
-                <SelectTrigger className="w-full md:w-44 h-11 flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-muted-foreground" />
-                  <SelectValue placeholder="Language" />
-                </SelectTrigger>
-
-                <SelectContent>
-                  <SelectItem value="all">All Languages</SelectItem>
-                  {languages.map((lang) => (
-                    <SelectItem key={lang} value={lang}>
-                      {lang}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Date Filter */}
-              <Select value={dateFilter} onValueChange={setDateFilter}>
-                <SelectTrigger className="w-full md:w-40 h-11">
-                  <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Date" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {hasActiveFilters && (
-                <Button variant="ghost" onClick={clearFilters} className="h-11">
-                  Clear Filters
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </SlideUp>
-
-      {/* Results Summary */}
-      <SlideUp delay={0.15}>
-        <div className="flex items-center justify-between mb-6">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredHistory.length} of {mockTranslationHistory.length} translations
+    <PageTransition className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Translation History
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            View and manage your past translation jobs.
           </p>
         </div>
-      </SlideUp>
-
-      {/* History List */}
-      <div className="space-y-4">
-        {filteredHistory.map((job, index) => {
-          const status = statusConfig[job.status]
-          const StatusIcon = status.icon
-
-          return (
-            <SlideUp key={job.id} delay={0.2 + index * 0.03}>
-              <Card className="hover:shadow-md transition-shadow duration-300">
-                <CardContent className="p-6">
-                  <div className="flex flex-col md:flex-row md:items-center gap-4">
-                    {/* File Icon */}
-                    <div className="flex-shrink-0">
-                      <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-muted-foreground" />
-                      </div>
-                    </div>
-
-                    {/* Main Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-medium text-foreground truncate">{job.documentName}</h3>
-                        <Badge variant="secondary" className={cn("shrink-0", status.className)}>
-                          <StatusIcon className="w-3 h-3 mr-1" />
-                          {status.label}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                        <span>
-                          {job.sourceLanguage} → {job.targetLanguage}
-                        </span>
-                        <span className="hidden md:inline">•</span>
-                        <span>{formatFileSize(job.fileSize)}</span>
-                        {job.glossaryName && (
-                          <>
-                            <span className="hidden md:inline">•</span>
-                            <span className="text-foreground/70">{job.glossaryName}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Metadata */}
-                    <div className="flex flex-col items-end text-right shrink-0">
-                      <p className="text-sm font-medium text-foreground">{formatDate(job.startedAt)}</p>
-                      <p className="text-sm text-muted-foreground">{formatTime(job.startedAt)}</p>
-                    </div>
-
-                    {/* Actions */}
-                    {job.status === "completed" && (
-                      <Button variant="outline" size="sm" className="shrink-0 bg-transparent">
-                        <Download className="w-4 h-4 mr-2" />
-                        Download
-                      </Button>
-                    )}
-                    {job.status === "failed" && (
-                      <Button variant="outline" size="sm" className="shrink-0 bg-transparent">
-                        Retry
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Progress for in-progress jobs */}
-                  {job.status === "translating" && (
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-muted-foreground">Progress</span>
-                        <span className="font-medium">{job.progress}%</span>
-                      </div>
-                      <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-primary rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${job.progress}%` }}
-                          transition={{ duration: 0.5 }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </SlideUp>
-          )
-        })}
+        <div className="flex items-center gap-2">
+           <Button variant="outline" size="sm" onClick={fetchJobs} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
+            Export CSV
+          </Button>
+        </div>
       </div>
 
-      {/* Empty State */}
-      {filteredHistory.length === 0 && (
-        <SlideUp delay={0.2}>
-          <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">No translations found</h3>
-            <p className="text-muted-foreground mb-6">
-              {hasActiveFilters ? "Try adjusting your filters" : "Start translating to see your history here"}
-            </p>
-            {hasActiveFilters ? (
-              <Button variant="outline" onClick={clearFilters}>
-                Clear Filters
-              </Button>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search documents..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-white dark:bg-zinc-950"
+          />
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[150px] bg-white dark:bg-zinc-950">
+              <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="translating">Translating</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader className="bg-zinc-50 dark:bg-zinc-900">
+            <TableRow>
+              <TableHead className="w-[300px]">Document</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Languages</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+               <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  Loading...
+                </TableCell>
+              </TableRow>
+            ) : paginatedHistory.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  No translations found.
+                </TableCell>
+              </TableRow>
             ) : (
-              <Button onClick={() => router.push("/dashboard")}>Start Translating</Button>
+              paginatedHistory.map((job) => (
+                <TableRow key={job.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50">
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]" title={job.documentName}>
+                           {job.documentName}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {/* Mock size if not available */}
+                          -
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      className={`${getStatusColor(
+                        job.status
+                      )} border-0 font-medium`}
+                    >
+                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                      <span className="font-medium">
+                        {getLanguageName(job.sourceLanguage)}
+                      </span>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-medium">
+                        {getLanguageName(job.targetLanguage)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">
+                      {(() => {
+                        try {
+                           return job.submittedAt ? format(new Date(job.submittedAt), "MMM d, yyyy") : "N/A";
+                        } catch (e) {
+                           return "Invalid Date";
+                        }
+                      })()}
+                    </div>
+                    <div className="text-xs text-muted-foreground/60">
+                      {(() => {
+                        try {
+                           return job.submittedAt ? format(new Date(job.submittedAt), "h:mm a") : "";
+                        } catch (e) {
+                           return "";
+                        }
+                      })()}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => window.location.href = `/dashboard/translate?jobId=${job.id}`}>
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        {job.status === "completed" && (
+                          <DropdownMenuItem onClick={() => handleDownload(job)}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Download
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-red-600 dark:text-red-400" onClick={() => TranslationService.cancelTranslation(job.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Record
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
-          </div>
-        </SlideUp>
-      )}
+          </TableBody>
+        </Table>
+      </div>
+
+       {/* Pagination */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+            Showing {(pagination.page - 1) * pagination.size + 1} to {Math.min(pagination.page * pagination.size, pagination.total)} of {pagination.total} translations
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(pagination.page - 1)}
+            disabled={pagination.page <= 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handlePageChange(pagination.page + 1)}
+            disabled={pagination.page >= pagination.totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </PageTransition>
-  )
+  );
 }

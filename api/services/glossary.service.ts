@@ -1,10 +1,3 @@
-/**
- * Glossary Service
- * API calls for glossary management
- * 
- * TODO: Implement the actual API calls based on your backend endpoints
- */
-
 import apiClient from "../client";
 import { API_CONFIG } from "../config";
 import {
@@ -15,6 +8,8 @@ import {
   CreateTermRequest,
   UpdateTermRequest,
   ApiResponse,
+  PaginatedResponse,
+  GlossaryTermsUpsertResponse,
 } from "../types";
 import { ApiErrorHandler } from "../utils/error-handler";
 
@@ -24,11 +19,13 @@ export class GlossaryService {
    */
   static async getGlossaries(): Promise<GlossaryResponse[]> {
     try {
-      const response = await apiClient.get<ApiResponse<GlossaryResponse[]>>(
-        API_CONFIG.ENDPOINTS.GLOSSARIES.BASE
+      const response = await apiClient.get<PaginatedResponse<GlossaryResponse>>(
+        API_CONFIG.ENDPOINTS.GLOSSARIES.BASE, {
+            params: { size: 100 }
+        }
       );
       
-      return response.data.data;
+      return response.data.items || [];
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.getGlossaries");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -40,11 +37,11 @@ export class GlossaryService {
    */
   static async getGlossaryById(id: string): Promise<GlossaryResponse> {
     try {
-      const response = await apiClient.get<ApiResponse<GlossaryResponse>>(
+      const response = await apiClient.get<GlossaryResponse>(
         API_CONFIG.ENDPOINTS.GLOSSARIES.BY_ID(id)
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.getGlossaryById");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -58,12 +55,12 @@ export class GlossaryService {
     data: CreateGlossaryRequest
   ): Promise<GlossaryResponse> {
     try {
-      const response = await apiClient.post<ApiResponse<GlossaryResponse>>(
+      const response = await apiClient.post<GlossaryResponse>(
         API_CONFIG.ENDPOINTS.GLOSSARIES.BASE,
         data
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.createGlossary");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -78,12 +75,12 @@ export class GlossaryService {
     data: UpdateGlossaryRequest
   ): Promise<GlossaryResponse> {
     try {
-      const response = await apiClient.put<ApiResponse<GlossaryResponse>>(
+      const response = await apiClient.put<GlossaryResponse>(
         API_CONFIG.ENDPOINTS.GLOSSARIES.BY_ID(id),
         data
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.updateGlossary");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -110,12 +107,12 @@ export class GlossaryService {
     term: CreateTermRequest
   ): Promise<TermResponse> {
     try {
-      const response = await apiClient.post<ApiResponse<TermResponse>>(
+      const response = await apiClient.post<TermResponse>(
         API_CONFIG.ENDPOINTS.GLOSSARIES.TERMS(glossaryId),
         term
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.addTerm");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -131,12 +128,12 @@ export class GlossaryService {
     term: UpdateTermRequest
   ): Promise<TermResponse> {
     try {
-      const response = await apiClient.put<ApiResponse<TermResponse>>(
+      const response = await apiClient.put<TermResponse>(
         API_CONFIG.ENDPOINTS.GLOSSARIES.TERM_BY_ID(glossaryId, termId),
         term
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.updateTerm");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -153,6 +150,25 @@ export class GlossaryService {
       );
     } catch (error) {
       ApiErrorHandler.logError(error, "GlossaryService.deleteTerm");
+      throw new Error(ApiErrorHandler.parseError(error));
+    }
+  }
+  /**
+   * Upsert multiple terms (batch)
+   */
+  static async upsertTerms(
+    glossaryId: string,
+    terms: { source: string; target: string }[]
+  ): Promise<GlossaryTermsUpsertResponse> {
+    try {
+      const response = await apiClient.post<GlossaryTermsUpsertResponse>(
+        `${API_CONFIG.ENDPOINTS.GLOSSARIES.BASE}/${glossaryId}/terms/upsert`,
+        { terms }
+      );
+      
+      return response.data;
+    } catch (error) {
+      ApiErrorHandler.logError(error, "GlossaryService.upsertTerms");
       throw new Error(ApiErrorHandler.parseError(error));
     }
   }

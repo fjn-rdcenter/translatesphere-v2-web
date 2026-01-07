@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { PageTransition, SlideUp } from "@/components/ui/page-transition";
 import { StepIndicator } from "@/components/step-indicator";
-import { mockGlossaries } from "@/lib/mock-data";
 import { DocumentSetupStep } from "./translating-process/document-setup-step";
 import { GlossarySelectionStep } from "./translating-process/glossary-selection-step";
 import { TranslationExecutionStep } from "./translating-process/translation-execution-step";
+import { TranslationService, GlossaryService } from "@/api/services";
+import { GlossaryResponse } from "@/api/types";
+import { useToast } from "@/hooks/use-toast";
 
 const steps = [
   { id: "document", label: "Document" },
@@ -27,22 +29,38 @@ export type TranslationStatus =
 function TranslatePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(0);
-  const [sourceLanguage, setSourceLanguage] = useState("Vietnamese");
-  const [targetLanguage, setTargetLanguage] = useState("");
+  
+  // Translation Config
+  const [sourceLanguage, setSourceLanguage] = useState("ja");
+  const [targetLanguage, setTargetLanguage] = useState("vi");
   const [selectedGlossaries, setSelectedGlossaries] = useState<string[]>([]);
   const [glossaryOption, setGlossaryOption] = useState<
     "none" | "existing" | "new"
   >("none");
+
+  // Document State
   const [uploadedFile, setUploadedFile] = useState<{
     name: string;
     size: number;
     type: string;
   } | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
 
-  // Replaced separate booleans with a single status for better state management
+  // Translation Job State
   const [status, setStatus] = useState<TranslationStatus>("idle");
   const [progress, setProgress] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
+  
+  // Polling State
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Glossaries data
+  const [glossaries, setGlossaries] = useState<GlossaryResponse[]>([]);
+
+  // Search/Filter state for Glossary Step
   const [searchQuery, setSearchQuery] = useState("");
   const [termQuery, setTermQuery] = useState("");
 
@@ -52,20 +70,28 @@ function TranslatePageContent() {
 
     // Load saved state
     const storedFile = sessionStorage.getItem("uploadedFile");
+    const storedDocId = sessionStorage.getItem("documentId");
     const storedStep = sessionStorage.getItem("currentStep");
     const storedSourceLang = sessionStorage.getItem("sourceLanguage");
     const storedTargetLang = sessionStorage.getItem("targetLanguage");
     const storedGlossaryOption = sessionStorage.getItem("glossaryOption");
-    const storedSelectedGlossaries =
-      sessionStorage.getItem("selectedGlossaries");
+    const storedSelectedGlossaries = sessionStorage.getItem("selectedGlossaries");
+    const storedJobId = sessionStorage.getItem("jobId");
 
-    if (storedFile) setUploadedFile(JSON.parse(storedFile));
+    if (storedDocId) {
+        setDocumentId(storedDocId);
+        // Only restore file if we have an ID (valid session)
+        if (storedFile) setUploadedFile(JSON.parse(storedFile)); 
+    } else {
+        // No ID, so any stored file is invalid/ghost state. Clear it.
+        sessionStorage.removeItem("uploadedFile");
+    }
+    if (storedJobId) setJobId(storedJobId);
 
     // Prioritize URL parameter over sessionStorage
     if (stepParam) {
       const step = parseInt(stepParam);
       setCurrentStep(step);
-      // Clear the URL parameter after reading it to avoid URL pollution
       router.replace("/dashboard/translate");
     } else if (storedStep) {
       setCurrentStep(parseInt(storedStep));
@@ -96,13 +122,132 @@ function TranslatePageContent() {
   }, [glossaryOption]);
 
   useEffect(() => {
-    sessionStorage.setItem(
-      "selectedGlossaries",
-      JSON.stringify(selectedGlossaries)
-    );
+    sessionStorage.setItem("selectedGlossaries", JSON.stringify(selectedGlossaries));
   }, [selectedGlossaries]);
+  
+  useEffect(() => {
+    if (documentId) sessionStorage.setItem("documentId", documentId);
+    else sessionStorage.removeItem("documentId");
+  }, [documentId]);
 
-  const handleNext = () => {
+  useEffect(() => {
+    if (jobId) sessionStorage.setItem("jobId", jobId);
+    else sessionStorage.removeItem("jobId");
+  }, [jobId]);
+
+  const fetchGlossaries = async () => {
+      try {
+          const data = await GlossaryService.getGlossaries();
+          setGlossaries(data);
+      } catch (error) {
+          console.error("Failed to fetch glossaries", error);
+      }
+  };
+
+  // Fetch glossaries when entering step 1
+  useEffect(() => {
+    if (currentStep === 1) {
+        fetchGlossaries();
+    }
+  }, [currentStep]);
+  
+  const stopPolling = useCallback(() => {
+      if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+      }
+  }, []);
+
+  // Polling logic
+  useEffect(() => {
+      if (status === "translating" && jobId) {
+          // Check immediately
+          checkStatus(jobId);
+          
+          // Set interval
+          pollingInterval.current = setInterval(() => {
+              checkStatus(jobId);
+          }, 2000); // Poll every 2 seconds
+      } else {
+          stopPolling();
+      }
+
+      return () => stopPolling();
+  }, [status, jobId, stopPolling]);
+
+  const checkStatus = async (id: string) => {
+      try {
+          const jobStatus = await TranslationService.getTranslationStatus(id);
+          setProgress(jobStatus.progress);
+          
+          if (jobStatus.status === "completed") {
+              setStatus("success");
+              setProgress(100);
+              stopPolling();
+          } else if (jobStatus.status === "failed") {
+              setStatus("error");
+              stopPolling();
+              toast({ variant: "destructive", title: "Translation Failed", description: jobStatus.errorMessage });
+          } else if (jobStatus.status === "cancelled") {
+              setStatus("cancelled");
+              stopPolling();
+          }
+      } catch (error) {
+          console.error("Status check failed", error);
+          // Don't error out completely on one failed check
+      }
+  };
+
+
+  const handleNext = async () => {
+    if (currentStep === 0) {
+        // Handle Document Upload if not already uploaded
+        if (!documentId && fileToUpload) {
+            try {
+                const response = await TranslationService.uploadDocument(fileToUpload, sourceLanguage, targetLanguage);
+                setDocumentId(response.id);
+                setUploadedFile({
+                    name: response.name,
+                    size: response.size,
+                    type: response.type
+                });
+                sessionStorage.setItem("uploadedFile", JSON.stringify({
+                    name: response.name,
+                    size: response.size,
+                    type: response.type
+                }));
+            } catch (error) {
+                console.error("Upload failed", error);
+                toast({
+                    variant: "destructive",
+                    title: "Upload Failed",
+                    description: "Failed to upload document. Please try again."
+                });
+                return; // Stop navigation
+            }
+        } else if (!documentId && !uploadedFile) {
+            // Case 1: No file selected at all
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Please upload a document to proceed."
+            });
+            return;
+        } else if (!documentId && uploadedFile) {
+            // Case 2: File appears uploaded (metadata exists) but ID is missing (session lost/inconsistent)
+            // This is the specific fix for "No document uploaded" error later on
+             toast({
+                variant: "destructive",
+                title: "Session Expired",
+                description: "Document session lost. Please re-upload your file."
+            });
+            // Reset state to force re-upload
+            setUploadedFile(null);
+            sessionStorage.removeItem("uploadedFile");
+            return;
+        }
+    }
+
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -110,15 +255,10 @@ function TranslatePageContent() {
 
   const handleBack = () => {
     if (currentStep > 0) {
-      // Reset translation status when navigating back from step 3
       if (currentStep === 3) {
         setStatus("idle");
         setProgress(0);
-        // Clear any ongoing translation interval
-        if ((window as any).translationInterval) {
-          clearInterval((window as any).translationInterval);
-          (window as any).translationInterval = null;
-        }
+        stopPolling();
       }
       setCurrentStep(currentStep - 1);
     } else {
@@ -126,55 +266,82 @@ function TranslatePageContent() {
     }
   };
 
-  const handleStartTranslation = () => {
+  const handleStartTranslation = async () => {
+    if (!documentId) {
+        toast({ variant: "destructive", title: "Error", description: "No document uploaded." });
+        return;
+    }
+
     setStatus("translating");
     setProgress(0);
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setStatus("success");
-          return 100;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 500);
+    try {
+        const job = await TranslationService.startTranslation({
+            sourceLanguage,
+            targetLanguage,
+            documentId: documentId,
+            glossaries: glossaryOption === "existing" ? selectedGlossaries : undefined
+        });
+        
+        setJobId(job.id);
+        // Polling will effectively start via useEffect on status change
 
-    // Store interval ID so we can cancel it
-    (window as any).translationInterval = interval;
+    } catch (error) {
+        console.error("Translation Start Failed", error);
+        setStatus("error");
+        toast({ variant: "destructive", title: "Error", description: "Failed to start translation." });
+    }
   };
 
-  const handleCancelTranslation = () => {
-    // Clear the interval
-    if ((window as any).translationInterval) {
-      clearInterval((window as any).translationInterval);
-      (window as any).translationInterval = null;
+  const handleCancelTranslation = async () => {
+    stopPolling();
+    if (jobId) {
+        try {
+            await TranslationService.cancelTranslation(jobId);
+        } catch (e) {
+            console.error("Cancel failed", e);
+        }
     }
-
-    // Set to cancelled state instead of resetting completely
     setStatus("cancelled");
     setProgress(0);
   };
 
-  const handleDownload = () => {
-    // Simulate download
-    alert("Download started!");
+  const handleDownload = async () => {
+     if (!jobId) return;
+     try {
+         const blob = await TranslationService.downloadTranslatedDocument(jobId);
+         const url = window.URL.createObjectURL(blob);
+         const a = document.createElement("a");
+         a.href = url;
+         a.download = `translated_${uploadedFile?.name || "document"}`;
+         document.body.appendChild(a);
+         a.click();
+         window.URL.revokeObjectURL(url);
+     } catch (e) {
+         console.error("Download failed", e);
+         toast({ variant: "destructive", title: "Error", description: "Download failed." });
+     }
   };
 
   const handleNewTranslation = () => {
     // Reset all state
     setCurrentStep(0);
     setUploadedFile(null);
-    setSourceLanguage("English");
-    setTargetLanguage("");
+    setDocumentId(null);
+    setJobId(null);
+    setFileToUpload(null);
+    setSourceLanguage("ja");
+    setTargetLanguage("vi");
     setSelectedGlossaries([]);
     setGlossaryOption("none");
     setStatus("idle");
     setProgress(0);
+    stopPolling();
 
     // Clear session storage
     sessionStorage.removeItem("uploadedFile");
+    sessionStorage.removeItem("documentId");
+    sessionStorage.removeItem("jobId");
     sessionStorage.removeItem("currentStep");
     sessionStorage.removeItem("sourceLanguage");
     sessionStorage.removeItem("targetLanguage");
@@ -187,7 +354,7 @@ function TranslatePageContent() {
     handleStartTranslation();
   };
 
-  const selectedGlossaryList = mockGlossaries.filter((g) =>
+  const selectedGlossaryList = glossaries.filter((g) =>
     selectedGlossaries.includes(g.id)
   );
 
@@ -208,7 +375,20 @@ function TranslatePageContent() {
         {currentStep === 0 && (
           <DocumentSetupStep
             uploadedFile={uploadedFile}
-            setUploadedFile={setUploadedFile}
+            setUploadedFile={(file) => {
+                // If null (removed)
+                if (!file) {
+                    setUploadedFile(null);
+                    setDocumentId(null);
+                    setFileToUpload(null);
+                    sessionStorage.removeItem("uploadedFile");
+                    sessionStorage.removeItem("documentId");
+                    return;
+                }
+                // If it's metadata (from storage) -> update meta
+                setUploadedFile(file);
+            }}
+            setFileToUpload={setFileToUpload} // Pass this down
             sourceLanguage={sourceLanguage}
             setSourceLanguage={setSourceLanguage}
             targetLanguage={targetLanguage}
@@ -231,8 +411,10 @@ function TranslatePageContent() {
             setSearchQuery={setSearchQuery}
             termQuery={termQuery}
             setTermQuery={setTermQuery}
+            glossaries={glossaries} // Pass real glossaries
             onNext={handleNext}
             onBack={handleBack}
+            onRefresh={fetchGlossaries}
           />
         )}
 

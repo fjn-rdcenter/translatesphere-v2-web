@@ -4,8 +4,10 @@ import Link from "next/link"
 import { Search, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Logo } from "@/components/logo"
+import { AuthService } from "@/api/services"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,11 +18,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export function Header() {
-  const user = {
-    name: "Huy Nguyen",
-    email: "huy.nvq@fujinet.net",
-    avatar: "/avatars/01.png"
-  }
+  const [user, setUser] = useState<{ username: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await AuthService.getCurrentUser();
+        if (userData) {
+           setUser(userData);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user", error);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const displayUser = user || { username: "Guest" };
+  // Remove @fujinet.net suffix if present
+  const username = displayUser.username.replace("@fujinet.net", "");
 
   return (
     <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6 flex items-center justify-between sticky top-0 z-10">
@@ -41,29 +57,27 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="text-right">
-          <p className="text-sm font-medium leading-none">{user.name}</p>
-          <p className="text-xs leading-none text-muted-foreground mt-1">{user.email}</p>
+        <div className="text-right hidden sm:block">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Welcome back,</p>
+          <p className="text-sm font-medium leading-tight">{username}</p>
         </div>
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
+                <AvatarFallback>{username.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{user.name}</p>
-                <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                <p className="text-sm font-medium leading-none">{username}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600 cursor-pointer">
+            <DropdownMenuItem className="text-red-600 cursor-pointer" onClick={() => AuthService.logout().then(() => window.location.href = "/login")}>
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>

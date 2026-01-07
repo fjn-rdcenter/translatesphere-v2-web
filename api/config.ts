@@ -4,7 +4,7 @@
  */
 
 export const API_CONFIG = {
-  BASE_URL: "http://192.168.137.218:18000",
+  BASE_URL: "http://localhost:18000",
   TIMEOUT: 30000, // 30 seconds
   
   // API Endpoints - Update these to match your backend routes
@@ -26,14 +26,18 @@ export const API_CONFIG = {
         `/api/v2/glossaries/${glossaryId}/terms/${termId}`,
     },
     
+    // Documents
+    DOCUMENTS: {
+      DOWNLOAD: (id: string) => `/api/v2/documents/download/${id}`,
+    },
+
     // Translations
     TRANSLATIONS: {
-      UPLOAD: "/api/v2/translations/upload",
-      START: "/api/v2/translations/start",
-      STATUS: (jobId: string) => `/api/v2/translations/${jobId}/status`,
+      UPLOAD: "/api/v2/documents/upload",
+      START: "/api/v2/translations",
+      STATUS: (jobId: string) => `/api/v2/translations/${jobId}`,
       CANCEL: (jobId: string) => `/api/v2/translations/${jobId}/cancel`,
-      DOWNLOAD: (jobId: string) => `/api/v2/translations/${jobId}/download`,
-      HISTORY: "/api/v2/translations/history",
+      HISTORY: "/api/v2/translations",
     },
   },
 } as const;

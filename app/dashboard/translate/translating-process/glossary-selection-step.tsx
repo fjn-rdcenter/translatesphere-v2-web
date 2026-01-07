@@ -4,39 +4,40 @@ import {
   ArrowLeft,
   ArrowRight,
   Plus,
-  Check,
   Search,
+  MoveRight,
   Edit2,
   X,
-  Trash2,
-  MoveRight,
-  Upload,
-  FileText,
+  Book,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { mockGlossaries } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
-
 import { Checkbox } from "@/components/ui/checkbox";
+import { GlossaryResponse, GlossaryDetailResponse } from "@/api/types";
+import { GlossaryService } from "@/api/services";
+import { CreateGlossaryDialog } from "../../../../components/glossary/create-glossary-dialog";
+import { EditGlossaryDialog } from "../../../../components/glossary/edit-glossary-dialog";
+import { useMemo } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2 } from "lucide-react";
+
 
 interface GlossarySelectionStepProps {
   glossaryOption: "none" | "existing" | "new";
@@ -49,8 +50,10 @@ interface GlossarySelectionStepProps {
   setSearchQuery: (query: string) => void;
   termQuery: string;
   setTermQuery: (query: string) => void;
+  glossaries: GlossaryResponse[];
   onNext: () => void;
   onBack: () => void;
+  onRefresh: () => void;
 }
 
 export function GlossarySelectionStep({
@@ -64,223 +67,223 @@ export function GlossarySelectionStep({
   setSearchQuery,
   termQuery,
   setTermQuery,
+  glossaries,
   onNext,
   onBack,
+  onRefresh,
 }: GlossarySelectionStepProps) {
-  const { toast } = useToast();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Modal state
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [viewingGlossaryId, setViewingGlossaryId] = useState<string | null>(
-    null
-  );
-  const [editedTerms, setEditedTerms] = useState<any[]>([]);
-  const [editedGlossaryName, setEditedGlossaryName] = useState("");
-  const [editedSourceLanguage, setEditedSourceLanguage] = useState("");
-  const [editedTargetLanguage, setEditedTargetLanguage] = useState("");
-  const [editedDescription, setEditedDescription] = useState("");
-  const [editModalSearchQuery, setEditModalSearchQuery] = useState("");
-  const [entryMode, setEntryMode] = useState<"manual" | "import">("manual");
-
-  // Add term state
-  const [isAddingNewTerm, setIsAddingNewTerm] = useState(false);
-  const [newTermSource, setNewTermSource] = useState("");
-  const [newTermTarget, setNewTermTarget] = useState("");
-  const [recentlyAddedTermId, setRecentlyAddedTermId] = useState<string | null>(
-    null
-  );
-  const [deletingTermId, setDeletingTermId] = useState<string | null>(null);
-
-  const viewingGlossaryData = viewingGlossaryId
-    ? mockGlossaries.find((g) => g.id === viewingGlossaryId)
-    : null;
-
-  const filteredGlossaries = mockGlossaries.filter((g) =>
+  // Filtering
+  const filteredGlossaries = glossaries.filter((g) =>
     g.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredTerms =
-    viewingGlossaryData?.terms?.filter((t: any) =>
-      `${t.source} ${t.target}`.toLowerCase().includes(termQuery.toLowerCase())
-    ) ?? [];
+  // Viewing state (Read-only view in the panel)
+  const [viewingGlossaryId, setViewingGlossaryId] = useState<string | null>(null);
 
-  // Automatically select the first available glossary to view if none is being viewed
-  useEffect(() => {
-    if (!viewingGlossaryId && filteredGlossaries.length > 0) {
-      setViewingGlossaryId(filteredGlossaries[0].id);
-    }
-  }, [filteredGlossaries]);
+  // Cache for fetched details
+  const [glossaryDetails, setGlossaryDetails] = useState<Record<string, GlossaryResponse>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
 
-  // Clear recently added term highlight after 2 seconds
-  useEffect(() => {
-    if (recentlyAddedTermId) {
-      const timer = setTimeout(() => setRecentlyAddedTermId(null), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [recentlyAddedTermId]);
+  // Conflict Handling State
+  const [pendingSelectionId, setPendingSelectionId] = useState<string | null>(null);
+  const [conflictData, setConflictData] = useState<{ count: number; examples: string[] } | null>(null);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
 
-  const resetModalState = () => {
-    setIsEditModalOpen(false);
-    setEditedTerms([]);
-    setIsAddingNewTerm(false);
-    setNewTermSource("");
-    setNewTermTarget("");
-    setEditModalSearchQuery("");
-    setDeletingTermId(null);
+  // Colors for selection (up to 5)
+  const SELECTION_COLORS = [
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-purple-500",
+    "bg-orange-500",
+    "bg-pink-500",
+  ];
+  
+  const SELECTION_BG_COLORS = [
+    "bg-blue-50",
+    "bg-green-50",
+    "bg-purple-50",
+    "bg-orange-50",
+    "bg-pink-50",
+  ];
+
+  const SELECTION_BORDER_COLORS = [
+    "border-blue-200",
+    "border-green-200",
+    "border-purple-200",
+    "border-orange-200",
+    "border-pink-200",
+  ];
+
+  // Helper to get color index
+  const getGlossaryColorIndex = (id: string) => {
+    const index = selectedGlossaries.indexOf(id);
+    return index !== -1 ? index : -1;
   };
 
-  const handleToggleGlossary = (id: string, checked: boolean) => {
+  // Fetch details logic
+  const fetchDetailsIfNeeded = async (ids: string[]) => {
+      const missingIds = ids.filter(id => !glossaryDetails[id] && !loadingDetails.has(id));
+      if (missingIds.length === 0) return;
+
+      setLoadingDetails(prev => new Set([...prev, ...missingIds]));
+      
+      try {
+          const results = await Promise.all(missingIds.map(id => 
+              GlossaryService.getGlossaryById(id).catch(() => null)
+          ));
+          
+          setGlossaryDetails(prev => {
+              const next = { ...prev };
+              results.forEach((g, i) => {
+                  if (g) next[missingIds[i]] = g;
+              });
+              return next;
+          });
+      } finally {
+          setLoadingDetails(prev => {
+              const next = new Set(prev);
+              missingIds.forEach(id => next.delete(id));
+              return next;
+          });
+      }
+  };
+
+  // Effect to fetch details for selected glossaries
+  useEffect(() => {
+      if (selectedGlossaries.length > 0) {
+          fetchDetailsIfNeeded(selectedGlossaries);
+      }
+  }, [selectedGlossaries]);
+
+  // Combined terms logic
+  const combinedTerms = useMemo(() => {
+      if (selectedGlossaries.length === 0 && !viewingGlossaryId) return [];
+      
+      // If viewing a single unselected glossary
+      if (selectedGlossaries.length === 0 && viewingGlossaryId) {
+          const details = glossaryDetails[viewingGlossaryId];
+          if (!details?.terms?.items) return [];
+          return details.terms.items.map(t => ({ ...t, glossaryId: viewingGlossaryId, colorIndex: -1 }));
+      }
+
+      // If viewing selection
+      return selectedGlossaries.flatMap((gid, index) => {
+          const details = glossaryDetails[gid];
+          if (!details?.terms?.items) return [];
+          return details.terms.items.map(t => ({ ...t, glossaryId: gid, colorIndex: index }));
+      });
+  }, [selectedGlossaries, viewingGlossaryId, glossaryDetails]);
+
+
+  // viewingGlossaryData logic for title/header
+  const headerData = viewingGlossaryId 
+    ? glossaries.find(g => g.id === viewingGlossaryId) 
+    : (selectedGlossaries.length === 1 ? glossaries.find(g => g.id === selectedGlossaries[0]) : null);
+
+  // Modal State
+  const [isCreatingOpen, setIsCreatingOpen] = useState(false);
+  const [editingGlossaryId, setEditingGlossaryId] = useState<string | null>(null);
+
+  const handleToggleGlossary = async (id: string, checked: boolean) => {
     if (checked) {
-      setSelectedGlossaries([...selectedGlossaries, id]);
-    } else {
-      setSelectedGlossaries(selectedGlossaries.filter((gId) => gId !== id));
-    }
-  };
-
-  const handleViewGlossary = (id: string) => {
-    setViewingGlossaryId(id);
-    setTermQuery("");
-  };
-
-  const handleOpenEditModal = () => {
-    setEditedTerms(viewingGlossaryData?.terms || []);
-    setEditedGlossaryName(viewingGlossaryData?.name || "");
-    setEditedSourceLanguage(viewingGlossaryData?.sourceLanguage || "");
-    setEditedTargetLanguage(viewingGlossaryData?.targetLanguage || "");
-    setEditedDescription(viewingGlossaryData?.description || "");
-    setEditModalSearchQuery("");
-    setIsEditModalOpen(true);
-  };
-
-  const handleCreateNewGlossary = () => {
-    setViewingGlossaryId(null);
-    setGlossaryOption("new");
-    setEditedTerms([]);
-    setEditedGlossaryName("");
-    setEditedSourceLanguage(sourceLanguage || "");
-    setEditedTargetLanguage(targetLanguage || "");
-    setEditedDescription("");
-    setEntryMode("manual");
-    setIsEditModalOpen(true);
-  };
-
-  const handleSaveChanges = () => {
-    console.log(
-      glossaryOption === "new"
-        ? "Creating new glossary:"
-        : "Saving glossary changes:",
-      {
-        name: editedGlossaryName,
-        sourceLanguage: editedSourceLanguage,
-        targetLanguage: editedTargetLanguage,
-        description: editedDescription,
-        terms: editedTerms,
-      }
-    );
-    resetModalState();
-  };
-
-  const handleEditTerm = (
-    termId: string,
-    field: "source" | "target",
-    value: string
-  ) => {
-    setEditedTerms((prev) =>
-      prev.map((term) =>
-        term.id === termId ? { ...term, [field]: value } : term
-      )
-    );
-  };
-
-  const initiateDeleteTerm = (termId: string) => {
-    setDeletingTermId(termId);
-  };
-
-  const confirmDeleteTerm = (termId: string) => {
-    setEditedTerms((prev) => prev.filter((term) => term.id !== termId));
-    setDeletingTermId(null);
-  };
-
-  const cancelDeleteTerm = () => {
-    setDeletingTermId(null);
-  };
-
-  const handleAddNewTerm = () => {
-    if (newTermSource.trim() && newTermTarget.trim()) {
-      const newTerm = {
-        id: `temp-${Date.now()}`,
-        source: newTermSource.trim(),
-        target: newTermTarget.trim(),
-      };
-      setEditedTerms((prev) => [...prev, newTerm]);
-      setRecentlyAddedTermId(newTerm.id);
-      setNewTermSource("");
-      setNewTermTarget("");
-      setIsAddingNewTerm(false);
-
-      setTimeout(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop =
-            scrollContainerRef.current.scrollHeight;
-        }
-      }, 100);
-    }
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      if (!content) return;
-
-      const newTerms = content
-        .split(/\r?\n/)
-        .filter((line) => line.trim())
-        .map((line) => {
-          const parts = line.split("|");
-          if (parts.length >= 2) {
-            const source = parts[0].trim();
-            const target = parts[1].trim();
-            if (source && target) {
-              return {
-                id: `imported-${Date.now()}-${Math.random()
-                  .toString(36)
-                  .substr(2, 9)}`,
-                source,
-                target,
-              };
-            }
+      if (selectedGlossaries.length >= 5) return;
+      
+      setValidatingId(id);
+      try {
+          // 1. Ensure details are fetched for the new glossary
+          let details = glossaryDetails[id];
+          if (!details) {
+              details = await GlossaryService.getGlossaryById(id);
+              // Update cache immediately to avoid re-fetch
+              setGlossaryDetails(prev => ({ ...prev, [id]: details }));
           }
-          return null;
-        })
-        .filter(Boolean) as any[];
 
-      if (newTerms.length > 0) {
-        setEditedTerms((prev) => [...prev, ...newTerms]);
-        setEntryMode("manual");
-        event.target.value = "";
-        toast({
-          variant: "success",
-          title: "Import Successful",
-          description: `${newTerms.length} terms have been imported successfully.`,
-          duration: 3000,
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Import Failed",
-          description:
-            "No valid terms found. Please ensure file content uses 'source | target' format.",
-          duration: 3000,
-        });
+          // 2. Check for duplicates against ALREADY SELECTED glossaries
+          const existingSources = new Set(combinedTerms.map(t => t.source.toLowerCase().trim()));
+          const newTerms = details.terms?.items || [];
+          const duplicates = newTerms.filter(t => existingSources.has(t.source.toLowerCase().trim()));
+
+          if (duplicates.length > 0) {
+              // CONFLICT FOUND -> Prompt User
+              setPendingSelectionId(id);
+              setConflictData({
+                  count: duplicates.length,
+                  examples: duplicates.slice(0, 3).map(t => t.source)
+              });
+          } else {
+              // NO CONFLICT -> Select immediately
+              setSelectedGlossaries([...selectedGlossaries, id]);
+              setGlossaryOption("existing");
+              setViewingGlossaryId(null);
+          }
+
+      } catch (error) {
+          console.error("Failed to validate glossary", error);
+          // Fallback: select anyway? or show error? Let's select to not block user.
+           setSelectedGlossaries([...selectedGlossaries, id]);
+           setGlossaryOption("existing");
+           setViewingGlossaryId(null);
+      } finally {
+          setValidatingId(null);
       }
-    };
-    reader.readAsText(file);
+
+    } else {
+      const newSelected = selectedGlossaries.filter((gId) => gId !== id);
+      setSelectedGlossaries(newSelected);
+      if (newSelected.length === 0) {
+          setGlossaryOption("none");
+          setViewingGlossaryId(null); // Clear view completely
+      }
+    }
   };
+
+  const confirmSelection = () => {
+      if (pendingSelectionId) {
+          setSelectedGlossaries([...selectedGlossaries, pendingSelectionId]);
+          setGlossaryOption("existing");
+          setViewingGlossaryId(null);
+          
+          // Cleanup
+          setPendingSelectionId(null);
+          setConflictData(null);
+      }
+  };
+
+  const cancelSelection = () => {
+      setPendingSelectionId(null);
+      setConflictData(null);
+  };
+
+  const handleCreateSuccess = (newGlossary: GlossaryDetailResponse) => {
+      setIsCreatingOpen(false);
+      onRefresh(); 
+      if (selectedGlossaries.length < 5) {
+          setSelectedGlossaries([...selectedGlossaries, newGlossary.id]);
+          setGlossaryOption("existing");
+          setViewingGlossaryId(null);
+      }
+  };
+
+  const handleEditSuccess = (updatedGlossary: GlossaryDetailResponse) => {
+      setEditingGlossaryId(null);
+      onRefresh();
+      // Invalidate cache for this glossary to refresh terms
+      setGlossaryDetails(prev => {
+          const next = { ...prev };
+          delete next[updatedGlossary.id];
+          return next;
+      });
+      // Trigger fetch again if selected
+      if (selectedGlossaries.includes(updatedGlossary.id)) {
+          fetchDetailsIfNeeded([updatedGlossary.id]);
+      }
+  };
+  
+  // Filter combined terms
+  const filteredCombinedTerms = combinedTerms.filter(t => 
+       t.source.toLowerCase().includes(termQuery.toLowerCase()) ||
+       t.target.toLowerCase().includes(termQuery.toLowerCase())
+  );
 
   return (
     <motion.div
@@ -293,14 +296,17 @@ export function GlossarySelectionStep({
         {/* LEFT PANEL - Glossary List */}
         <div className="lg:col-span-4">
           <Card className="h-[calc(100vh-280px)] flex flex-col">
-            <CardHeader className="pb-0">
+            <CardHeader className="pb-0 shrink-0">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   Select Glossary
+                  <span className="text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                      {selectedGlossaries.length}/5
+                  </span>
                 </CardTitle>
                 <Button
                   size="sm"
-                  onClick={handleCreateNewGlossary}
+                  onClick={() => setIsCreatingOpen(true)}
                   className="h-8"
                 >
                   <Plus className="mr-1.5 w-4 h-4" />
@@ -319,45 +325,84 @@ export function GlossarySelectionStep({
               </div>
             </CardHeader>
 
-            <CardContent className="flex-1 overflow-y-auto space-y-2 pt-0">
-              <div className="pt-0 pb-1">
+            <CardContent className="flex-1 overflow-y-auto space-y-2 pt-0 mt-3">
+              <div className="pb-1">
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Glossary List
                 </h3>
               </div>
 
-              {filteredGlossaries.map((glossary) => (
-                <div
-                  key={glossary.id}
-                  onClick={() => handleViewGlossary(glossary.id)}
-                  className={cn(
-                    "p-3 rounded-lg border cursor-pointer transition flex items-center justify-between gap-3",
-                    viewingGlossaryId === glossary.id
-                      ? "border-primary bg-primary/5"
-                      : "hover:bg-secondary/50"
-                  )}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">
-                      {glossary.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {glossary.sourceLanguage} → {glossary.targetLanguage}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {glossary.termCount} terms
-                    </p>
-                  </div>
-                  <Checkbox
-                    checked={selectedGlossaries.includes(glossary.id)}
-                    onCheckedChange={(checked) =>
-                      handleToggleGlossary(glossary.id, checked as boolean)
-                    }
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-5 w-5 border-2 border-primary/50 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                  />
-                </div>
-              ))}
+              {filteredGlossaries.map((glossary) => {
+                 const isSelected = selectedGlossaries.includes(glossary.id);
+                 const colorIndex = getGlossaryColorIndex(glossary.id);
+                 const isValidating = validatingId === glossary.id;
+                 
+                 return (
+                <TooltipProvider key={glossary.id}>
+                  <Tooltip delayDuration={500}>
+                    <TooltipTrigger asChild>
+                      <div
+                        onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (!isValidating) setEditingGlossaryId(glossary.id);
+                        }}
+                        className={cn(
+                          "p-3 rounded-lg border cursor-pointer transition flex items-center justify-between gap-3 relative overflow-hidden select-none group",
+                          isSelected 
+                              ? cn("border-transparent ring-1 ring-inset", SELECTION_BG_COLORS[colorIndex], "ring-" + SELECTION_COLORS[colorIndex].replace("bg-", "")) 
+                              : "hover:bg-secondary/50",
+                          isValidating && "opacity-70 pointer-events-none"
+                        )}
+                      >
+                        {isSelected && (
+                            <div className={cn("absolute left-0 top-0 bottom-0 w-1", SELECTION_COLORS[colorIndex])} />
+                        )}
+                        
+                        <div className="flex-1 min-w-0 pl-1">
+                          <p className="font-medium text-sm truncate flex items-center gap-2">
+                            {glossary.name}
+                            {isValidating && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {glossary.sourceLanguage} → {glossary.targetLanguage} • {glossary.termCount} terms
+                          </p>
+                        </div>
+                        
+                        {/* Inline Edit Button */}
+                        <div className="flex items-center gap-1">
+                          <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingGlossaryId(glossary.id);
+                              }}
+                          >
+                              <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+
+                          <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) =>
+                                handleToggleGlossary(glossary.id, checked as boolean)
+                              }
+                              disabled={!isSelected && selectedGlossaries.length >= 5 || isValidating}
+                              onClick={(e) => e.stopPropagation()}
+                              className={cn(
+                                  "h-5 w-5 border-2",
+                                  isSelected ? cn("border-transparent text-white", SELECTION_COLORS[colorIndex]) : "border-primary/50"
+                              )}
+                          />
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Double-click to view details</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )})}
 
               {filteredGlossaries.length === 0 && searchQuery && (
                 <p className="text-sm text-muted-foreground text-center py-8">
@@ -368,114 +413,90 @@ export function GlossarySelectionStep({
           </Card>
         </div>
 
-        {/* RIGHT PANEL - Detail View */}
+        {/* RIGHT PANEL - Combined Detail View */}
         <div className="lg:col-span-8">
           <Card className="h-[calc(100vh-280px)] flex flex-col">
-            {viewingGlossaryId === null ? (
-              <>
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold">
-                    No Glossary Selected
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-center">
-                  <div className="text-center space-y-2 max-w-md">
-                    <div className="mx-auto w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
-                      <Search className="w-8 h-8 text-muted-foreground" />
-                    </div>
-                    <h3 className="font-semibold text-lg">
-                      Select a Glossary to View
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Click on a glossary from the list to view its terms and
-                      details.
-                    </p>
-                  </div>
-                </CardContent>
-              </>
-            ) : (
-              <>
-                <CardHeader className="pb-1">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg font-semibold truncate">
-                        {viewingGlossaryData?.name}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {viewingGlossaryData?.sourceLanguage} →{" "}
-                        {viewingGlossaryData?.targetLanguage} •{" "}
-                        {viewingGlossaryData?.termCount} terms
-                      </p>
-                      {viewingGlossaryData?.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {viewingGlossaryData.description}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleOpenEditModal}
-                    >
-                      <Edit2 className="mr-2 w-4 h-4" />
-                      Edit
-                    </Button>
-                  </div>
+            <CardHeader className="pb-3 border-b shrink-0">
+                 <div className="flex items-center justify-between">
+                     <div>
+                         <CardTitle className="text-lg font-semibold">
+                             {selectedGlossaries.length > 0 ? (
+                                <div className="flex items-center gap-2">
+                                    Combined Term Preview
+                                </div>
+                             ) : (
+                                headerData?.name || "No Selection"
+                             )}
+                         </CardTitle>
+                         <p className="text-sm text-muted-foreground mt-1">
+                             {selectedGlossaries.length > 0 
+                                ? `${filteredCombinedTerms.length} terms from ${selectedGlossaries.length} glossaries`
+                                : "Select glossaries to verify terms"}
+                         </p>
+                     </div>
+                     
+                     <div className="relative w-64">
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                          value={termQuery}
+                          onChange={(e) => setTermQuery(e.target.value)}
+                          placeholder="Search terms..."
+                          className="h-8 w-full rounded-md border border-border bg-muted/20 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                     </div>
+                 </div>
+                 
+                 {/* Legend */}
+                 {selectedGlossaries.length > 0 && (
+                     <div className="flex flex-wrap gap-2 mt-3">
+                         {selectedGlossaries.map((gid, idx) => {
+                             const g = glossaries.find(g => g.id === gid);
+                             return (
+                                 <div key={gid} className={cn("text-[10px] px-2 py-0.5 rounded-full border flex items-center gap-1.5", SELECTION_BG_COLORS[idx], SELECTION_BORDER_COLORS[idx])}>
+                                     <div className={cn("w-1.5 h-1.5 rounded-full", SELECTION_COLORS[idx])} />
+                                     <span className="font-medium truncate max-w-[100px]">{g?.name || "Loading..."}</span>
+                                     <button onClick={() => handleToggleGlossary(gid, false)} className="ml-1 opacity-50 hover:opacity-100">
+                                         <X className="w-3 h-3" />
+                                     </button>
+                                 </div>
+                             )
+                         })}
+                     </div>
+                 )}
+            </CardHeader>
 
-                  <div className="relative mt-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input
-                      value={termQuery}
-                      onChange={(e) => setTermQuery(e.target.value)}
-                      placeholder="Search terms..."
-                      className="h-9 w-full rounded-md border border-border bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto p-0 bg-slate-50/50">
+                 {/* Table Header */}
+                 <div className="grid grid-cols-[auto_1fr_24px_1fr] gap-4 px-6 py-2 bg-white border-b text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-0 z-10 shadow-sm">
+                     <div className="w-1"></div>
+                     <div>Source</div>
+                     <div></div>
+                     <div>Target</div>
+                 </div>
 
-                <CardContent className="flex-1 overflow-y-auto pt-0">
-                  <div className="rounded-lg border">
-                    <div className="grid grid-cols-[1fr_auto_1fr] gap-4 p-3 bg-secondary/30 border-b font-medium text-sm">
-                      <div>Source Term</div>
-                      <MoveRight className="w-4 h-4 text-muted-foreground mx-auto" />
-                      <div>Target Term</div>
+                 {filteredCombinedTerms.length === 0 ? (
+                     <div className="h-40 flex flex-col items-center justify-center text-muted-foreground opacity-50 mt-10">
+                        <Book className="w-10 h-10 mb-2 stroke-1" />
+                        <p className="text-sm">No terms to display</p>
                     </div>
-
-                    <div className="divide-y">
-                      {filteredTerms.length > 0 ? (
-                        filteredTerms.map((term: any) => (
-                          <div
-                            key={term.id}
-                            className="grid grid-cols-[1fr_auto_1fr] gap-4 p-3 transition hover:bg-secondary/20"
-                          >
-                            <div className="text-sm truncate">
-                              {term.source}
-                            </div>
-                            <MoveRight className="w-4 h-4 text-muted-foreground mx-auto" />
-                            <div className="text-sm font-medium truncate">
-                              {term.target}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="p-8 text-center text-sm text-muted-foreground">
-                          {termQuery
-                            ? "No matching terms found"
-                            : "No terms in this glossary"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {filteredTerms.length > 0 && termQuery === "" && (
-                    <p className="text-xs text-muted-foreground mt-3 text-center">
-                      Showing {filteredTerms.length} of{" "}
-                      {viewingGlossaryData?.termCount} terms
-                    </p>
-                  )}
-                </CardContent>
-              </>
-            )}
+                 ) : (
+                     <div className="divide-y divide-border">
+                         {filteredCombinedTerms.map((term, index) => {
+                             const colorIndex = term.colorIndex !== -1 ? term.colorIndex : 0; // Default if viewing single
+                             const isCombined = selectedGlossaries.length > 0;
+                             
+                             return (
+                                 <div key={`${term.glossaryId}-${term.id}-${index}`} className="grid grid-cols-[auto_1fr_24px_1fr] gap-4 px-6 py-3 items-center bg-white hover:bg-muted/30 transition-colors group">
+                                     <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", isCombined ? SELECTION_COLORS[colorIndex] : "bg-primary/30")} />
+                                     <div className="text-sm font-medium text-foreground">{term.source}</div>
+                                     <MoveRight className="w-3.5 h-3.5 text-muted-foreground/30" />
+                                     <div className="text-sm text-primary font-medium">{term.target}</div>
+                                 </div>
+                             )
+                         })}
+                     </div>
+                 )}
+            </CardContent>
           </Card>
         </div>
       </div>
@@ -492,372 +513,50 @@ export function GlossarySelectionStep({
         </Button>
       </div>
 
-      {/* Edit/Create Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-xl w-full flex flex-col md:max-h-[95vh] h-[90vh] md:h-auto p-0 gap-0 overflow-hidden outline-none bg-white shadow-xl sm:rounded-xl">
-          <DialogHeader className="px-6 py-4 border-b bg-white relative z-10 shrink-0">
-            <DialogTitle className="text-xl font-semibold tracking-tight mb-3">
-              {glossaryOption === "new"
-                ? "Create New Glossary"
-                : "Edit Glossary"}
-            </DialogTitle>
-            <div className="grid gap-3">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="space-y-1 flex-[1.5]">
-                  <Label
-                    htmlFor="glossary-name"
-                    className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
-                  >
-                    Glossary Name
-                  </Label>
-                  <Input
-                    id="glossary-name"
-                    value={editedGlossaryName}
-                    onChange={(e) => setEditedGlossaryName(e.target.value)}
-                    placeholder="E.g., Technical Terms"
-                    className="h-8 bg-muted/30 focus:bg-white transition-colors text-sm"
-                  />
-                </div>
+      {/* Create Modal */}
+      <CreateGlossaryDialog
+        open={isCreatingOpen}
+        onOpenChange={setIsCreatingOpen}
+        onSuccess={handleCreateSuccess}
+        defaultSourceLanguage={sourceLanguage}
+        defaultTargetLanguage={targetLanguage}
+      />
 
-                <div className="space-y-1 flex-1">
-                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                    Source
-                  </Label>
-                  <Select
-                    value={editedSourceLanguage}
-                    onValueChange={setEditedSourceLanguage}
-                  >
-                    <SelectTrigger className="h-8 bg-muted/30 focus:bg-white transition-colors w-full text-sm">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Vietnamese">Vietnamese</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="Japanese">Japanese</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+      {/* Edit Modal - Only accessible via Detail Page now or specific action. Removed valid button for now in combined view */}
+      <EditGlossaryDialog
+        open={!!editingGlossaryId}
+        onOpenChange={(open) => !open && setEditingGlossaryId(null)}
+        glossaryId={editingGlossaryId}
+        onSuccess={handleEditSuccess}
+      />
 
-                <div className="space-y-1 flex-1">
-                  <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                    Target
-                  </Label>
-                  <Select
-                    value={editedTargetLanguage}
-                    onValueChange={setEditedTargetLanguage}
-                  >
-                    <SelectTrigger className="h-8 bg-muted/30 focus:bg-white transition-colors w-full text-sm">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Vietnamese">Vietnamese</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="Japanese">Japanese</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label
-                  htmlFor="description"
-                  className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
-                >
-                  Description (optional)
-                </Label>
-                <Textarea
-                  id="description"
-                  value={editedDescription}
-                  onChange={(e) => setEditedDescription(e.target.value)}
-                  placeholder="Brief description of this glossary..."
-                  className="min-h-[40px] !max-h-[80px] overflow-y-auto resize-none bg-muted/30 focus:bg-white transition-colors text-sm py-2 break-all"
-                />
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-hidden flex flex-col bg-slate-50/50">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-6 py-2 border-b bg-white/50 backdrop-blur-sm sticky top-0 z-10 h-10 gap-4">
-              <div className="flex items-center p-1 bg-muted/50 rounded-lg border border-border/50">
-                <button
-                  onClick={() => setEntryMode("manual")}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-semibold rounded-md transition-all",
-                    entryMode === "manual"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-white/50"
-                  )}
-                >
-                  Manual Entry
-                </button>
-                <button
-                  onClick={() => setEntryMode("import")}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-semibold rounded-md transition-all",
-                    entryMode === "import"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-white/50"
-                  )}
-                >
-                  Import File
-                </button>
-              </div>
-
-              {entryMode === "manual" && (
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <input
-                    value={editModalSearchQuery}
-                    onChange={(e) => setEditModalSearchQuery(e.target.value)}
-                    placeholder="Search terms..."
-                    className="w-full bg-white border border-border/50 h-7 rounded-md pl-8 pr-4 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all shadow-sm"
-                  />
-                </div>
-              )}
-
-              <div className="text-[10px] text-muted-foreground font-medium px-2 py-0.5 bg-muted rounded-md border border-border/50 ml-auto">
-                {editedTerms.length} terms
-              </div>
-            </div>
-
-            {/* Content Area */}
-            {entryMode === "manual" ? (
-              <>
-                <div className="grid grid-cols-[1fr_24px_1fr_auto] gap-4 px-6 py-1.5 bg-muted/30 border-b">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-3">
-                    Source Term
-                  </div>
-                  <div></div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-3">
-                    Target Term
-                  </div>
-                  <div></div>
-                </div>
-
-                <div
-                  ref={scrollContainerRef}
-                  className="flex-1 overflow-y-auto p-4 space-y-1"
-                >
-                  {editedTerms.length > 0 ? (
-                    editedTerms
-                      .filter((t: any) =>
-                        `${t.source} ${t.target}`
-                          .toLowerCase()
-                          .includes(editModalSearchQuery.toLowerCase())
-                      )
-                      .map((term: any) => {
-                        const isNewlyAdded = term.id === recentlyAddedTermId;
-                        const isDeleting = term.id === deletingTermId;
-                        return (
-                          <div
-                            key={term.id}
-                            className={cn(
-                              "group grid grid-cols-[1fr_24px_1fr_auto] gap-4 items-center p-1.5 rounded-lg border transition-all duration-300",
-                              isNewlyAdded
-                                ? "bg-green-50/50 border-green-500/30 shadow-sm"
-                                : isDeleting
-                                ? "bg-red-50/50 border-red-500/30 shadow-sm"
-                                : "border-transparent bg-white shadow-sm hover:border-primary/20 hover:shadow-md"
-                            )}
-                          >
-                            <Input
-                              value={term.source}
-                              onChange={(e) =>
-                                handleEditTerm(
-                                  term.id,
-                                  "source",
-                                  e.target.value
-                                )
-                              }
-                              disabled={isDeleting}
-                              className={cn(
-                                "h-8 border-transparent bg-transparent hover:bg-muted/50 focus:bg-white focus:border-input focus:shadow-sm transition-all text-sm px-2",
-                                isNewlyAdded && "text-green-800 font-medium",
-                                isDeleting && "text-red-800/50"
-                              )}
-                              placeholder="Source term"
-                            />
-                            <MoveRight className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0 mx-auto" />
-                            <Input
-                              value={term.target}
-                              onChange={(e) =>
-                                handleEditTerm(
-                                  term.id,
-                                  "target",
-                                  e.target.value
-                                )
-                              }
-                              disabled={isDeleting}
-                              className={cn(
-                                "h-8 border-transparent bg-transparent hover:bg-muted/50 focus:bg-white focus:border-input focus:shadow-sm transition-all text-sm font-medium text-primary px-2",
-                                isNewlyAdded && "text-green-800",
-                                isDeleting && "text-red-800/50"
-                              )}
-                              placeholder="Target term"
-                            />
-
-                            {isDeleting ? (
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => confirmDeleteTerm(term.id)}
-                                  className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-100 rounded-full"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={cancelDeleteTerm}
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </Button>
-                                <span className="text-[10px] text-red-600 font-medium ml-1 mr-1">
-                                  Delete?
-                                </span>
-                              </div>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => initiateDeleteTerm(term.id)}
-                                className="h-7 w-7 text-muted-foreground/60 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all rounded-full"
-                                tabIndex={-1}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        );
-                      })
-                  ) : (
-                    <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-muted-foreground rounded-lg border-2 border-dashed border-muted m-2 bg-muted/5">
-                      <div className="w-14 h-14 rounded-full bg-background flex items-center justify-center mb-3 shadow-sm">
-                        <Plus className="w-6 h-6 text-primary/40" />
-                      </div>
-                      <p className="font-medium text-foreground text-sm">
-                        No terms yet
-                      </p>
-                      <p className="text-xs mt-1">
-                        Add your first term below to get started
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/50">
-                <div
-                  className="w-full max-w-lg border-2 border-dashed border-primary/20 rounded-xl bg-white/50 p-10 flex flex-col items-center justify-center text-center hover:bg-primary/5 hover:border-primary/40 transition-all cursor-pointer group"
-                  onClick={() =>
-                    document.getElementById("file-upload")?.click()
-                  }
-                >
-                  <input
-                    type="file"
-                    id="file-upload"
-                    className="hidden"
-                    accept=".txt"
-                    onChange={handleFileUpload}
-                  />
-                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                    <Upload className="w-8 h-8 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">
-                    Click to upload .txt file
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4 max-w-xs">
-                    Files must follow the format: <br />
-                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
-                      source term | target term
-                    </code>
-                  </p>
-                  <div className="text-xs text-muted-foreground/60 flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5" />
-                    Max file size: 5MB
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Add New Section - Only in Manual Mode */}
-            {entryMode === "manual" && (
-              <div className="p-3 border-t bg-white shrink-0 z-20 shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.05)] flex justify-center">
-                {isAddingNewTerm ? (
-                  <div className="flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300 w-full max-w-3xl">
-                    <div className="flex-1 grid grid-cols-[1fr_24px_1fr] gap-4 items-center p-2 rounded-lg border border-primary/20 bg-primary/5">
-                      <Input
-                        value={newTermSource}
-                        onChange={(e) => setNewTermSource(e.target.value)}
-                        placeholder="New Source Term"
-                        className="h-8 bg-white border-primary/20 focus:border-primary shadow-sm text-sm"
-                        autoFocus
-                      />
-                      <MoveRight className="w-4 h-4 text-primary/40 shrink-0 mx-auto" />
-                      <Input
-                        value={newTermTarget}
-                        onChange={(e) => setNewTermTarget(e.target.value)}
-                        placeholder="New Target Term"
-                        className="h-8 bg-white border-primary/20 focus:border-primary shadow-sm text-sm"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAddNewTerm();
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Button
-                        onClick={handleAddNewTerm}
-                        size="icon"
-                        className="h-8 w-8 bg-primary hover:bg-primary/90 shadow-sm rounded-full"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        onClick={() => setIsAddingNewTerm(false)}
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-auto px-8 h-9 border-dashed border text-xs text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all rounded-full"
-                    onClick={() => setIsAddingNewTerm(true)}
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />
-                    Add New Term
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="p-4 bg-muted/20 shrink-0 border-t">
-            <div className="flex items-center justify-between w-full">
-              <div className="text-xs text-muted-foreground">
-                {editedTerms.length > 0
-                  ? "Changes must be saved to apply."
-                  : ""}
-              </div>
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={resetModalState}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveChanges} className="px-8">
-                  Save Changes
-                </Button>
-              </div>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+       {/* Conflict Validation Dialog */}
+       <AlertDialog open={!!pendingSelectionId} onOpenChange={(open) => !open && cancelSelection()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+               Duplicate Terms Detected
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                 This glossary contains <strong>{conflictData?.count}</strong> terms that overlap with your current selection. 
+              </span>
+               {conflictData?.examples && conflictData.examples.length > 0 && (
+                   <span className="block bg-muted/50 p-2 rounded text-xs font-mono text-muted-foreground">
+                       Example: {conflictData.examples.join(", ")}...
+                   </span>
+               )}
+              <span className="block">
+                 If you proceed, these duplicate terms will override or be ignored based on priority (Last Selected wins). Do you want to include this glossary?
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelSelection}>Exclude</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSelection}>Include Glossary</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileCard } from "@/components/file-card";
 import { TranslationStatus } from "../page";
+import { SUPPORTED_LANGUAGES } from "@/lib/constants";
 
 interface TranslationExecutionStepProps {
   currentStep: number;
@@ -91,13 +92,17 @@ export function TranslationExecutionStep({
                 <p className="text-sm text-muted-foreground mb-1">
                   Source Language
                 </p>
-                <p className="font-medium">{sourceLanguage}</p>
+                <p className="font-medium">
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === sourceLanguage)?.name || sourceLanguage}
+                </p>
               </div>
               <div className="p-4 rounded-xl bg-secondary/50">
                 <p className="text-sm text-muted-foreground mb-1">
                   Target Language
                 </p>
-                <p className="font-medium">{targetLanguage}</p>
+                <p className="font-medium">
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === targetLanguage)?.name || targetLanguage}
+                </p>
               </div>
             </div>
 
@@ -174,9 +179,15 @@ export function TranslationExecutionStep({
               <p className="text-muted-foreground mb-8">
                 Click below to start the translation process
               </p>
-              <Button size="lg" onClick={onStartTranslation} className="group">
-                Start Translating
-              </Button>
+              <div className="flex justify-center gap-4">
+                 <Button size="lg" variant="outline" onClick={onBack}>
+                  <ArrowLeft className="mr-2 w-4 h-4" />
+                  Back
+                </Button>
+                <Button size="lg" onClick={onStartTranslation} className="group">
+                  Start Translating
+                </Button>
+              </div>
             </div>
           )}
 

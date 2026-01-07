@@ -10,6 +10,7 @@ import { API_CONFIG } from "../config";
 import {
   LoginRequest,
   LoginResponse,
+  UserResponse,
   RefreshTokenResponse,
   ApiResponse,
 } from "../types";
@@ -140,13 +141,13 @@ export class AuthService {
   /**
    * Get current user information
    */
-  static async getCurrentUser(): Promise<LoginResponse["user"]> {
+  static async getCurrentUser(): Promise<UserResponse> {
     try {
-      const response = await apiClient.get<ApiResponse<LoginResponse["user"]>>(
+      const response = await apiClient.get<UserResponse>(
         API_CONFIG.ENDPOINTS.AUTH.ME
       );
       
-      return response.data.data;
+      return response.data;
     } catch (error) {
       ApiErrorHandler.logError(error, "AuthService.getCurrentUser");
       throw new Error(ApiErrorHandler.parseError(error));
