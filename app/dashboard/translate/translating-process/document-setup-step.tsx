@@ -18,7 +18,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FileCard } from "@/components/file-card";
-import { languages } from "@/lib/mock-data";
+// Remove mock data
+// import { languages } from "@/lib/mock-data"; 
+
+// Constants
+import { SUPPORTED_LANGUAGES } from "@/lib/constants";
 
 interface DocumentSetupStepProps {
   uploadedFile: {
@@ -29,6 +33,7 @@ interface DocumentSetupStepProps {
   setUploadedFile: (
     file: { name: string; size: number; type: string } | null
   ) => void;
+  setFileToUpload: (file: File | null) => void; 
   sourceLanguage: string;
   setSourceLanguage: (lang: string) => void;
   targetLanguage: string;
@@ -40,6 +45,7 @@ interface DocumentSetupStepProps {
 export function DocumentSetupStep({
   uploadedFile,
   setUploadedFile,
+  setFileToUpload,
   sourceLanguage,
   setSourceLanguage,
   targetLanguage,
@@ -48,8 +54,11 @@ export function DocumentSetupStep({
   onBack,
 }: DocumentSetupStepProps) {
   const handleRemoveFile = () => {
-    setUploadedFile(null);
-    sessionStorage.removeItem("uploadedFile");
+    setUploadedFile(null); // This triggers the logic in parent to clear everything
+    // setFileToUpload(null) is called implicitly by parent's setUploadedFile wrapper if I implemented it that way,
+    // OR we should call it explicitly if parent wrapper doesn't handle both.
+    // In `page.tsx`, `setUploadedFile` prop wrapper clears `fileToUpload` if null passed.
+    // So this is fine.
   };
 
   const handleFileSelect = (file: File) => {
@@ -59,7 +68,10 @@ export function DocumentSetupStep({
       type: file.type,
     };
     setUploadedFile(fileData);
-    sessionStorage.setItem("uploadedFile", JSON.stringify(fileData));
+    setFileToUpload(file);
+    setUploadedFile(fileData);
+    setFileToUpload(file);
+    // sessionStorage.setItem("uploadedFile", JSON.stringify(fileData)); // REMOVED: Premature saving causing ghost state
   };
 
   return (
@@ -190,9 +202,9 @@ export function DocumentSetupStep({
                   <SelectValue placeholder="From" />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages.map((lang) => (
-                    <SelectItem key={lang} value={lang}>
-                      {lang}
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -218,11 +230,11 @@ export function DocumentSetupStep({
                   <SelectValue placeholder="To" />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages
-                    .filter((l) => l !== sourceLanguage)
+                  {SUPPORTED_LANGUAGES
+                    .filter((l) => l.code !== sourceLanguage)
                     .map((lang) => (
-                      <SelectItem key={lang} value={lang}>
-                        {lang}
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
                       </SelectItem>
                     ))}
                 </SelectContent>

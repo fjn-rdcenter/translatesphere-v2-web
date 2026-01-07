@@ -1,0 +1,162 @@
+/**
+ * Authentication Service
+ * API calls for user authentication
+ * 
+ * TODO: Implement the actual API calls based on your backend endpoints
+ */
+
+import apiClient from "../client";
+import { API_CONFIG } from "../config";
+import {
+  LoginRequest,
+  LoginResponse,
+  UserResponse,
+  RefreshTokenResponse,
+  ApiResponse,
+} from "../types";
+import { ApiErrorHandler } from "../utils/error-handler";
+
+export class AuthService {
+  static async login(credentials: LoginRequest): Promise<LoginResponse> {
+    try {
+      // Prepare form data for OAuth2 password grant
+      const formData = new URLSearchParams();
+      formData.append("grant_type", credentials.grant_type || "password");
+      formData.append("username", credentials.username);
+      formData.append("password", credentials.password);
+      formData.append("scope", credentials.scope || "");
+      formData.append("client_id", credentials.client_id || "string");
+      formData.append("client_secret", credentials.client_secret || "");
+
+      console.log("Attempting login to:", API_CONFIG.ENDPOINTS.AUTH.LOGIN);
+      
+      const response = await apiClient.post<ApiResponse<LoginResponse>>(
+        API_CONFIG.ENDPOINTS.AUTH.LOGIN,
+        formData.toString(),
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          withCredentials: true, // Important: allows cookies to be set
+        }
+      );
+      
+      console.log("Login response:", response.data);
+      
+      // Handle different response formats
+      const loginData = response.data.data || response.data;
+      const token = loginData.token || loginData.access_token;
+      const refreshToken = loginData.refreshToken || loginData.refresh_token;
+      
+      // Store access token in localStorage
+      if (token) {
+        localStorage.setItem("auth_token", token);
+        console.log("Access token stored in localStorage");
+      }
+      
+      // Store refresh token in cookie (if not already set by backend)
+      let cookieExists = document.cookie.includes('refresh_token');
+      
+      if (refreshToken) {
+        // Check if backend already set the cookie
+        if (!cookieExists) {
+          // Set cookie with secure flags
+          document.cookie = `refresh_token=${refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+          console.log("Refresh token stored in cookie");
+          cookieExists = true;
+        } else {
+          console.log("Refresh token already set by backend");
+        }
+      }
+
+      // NOTE: We cannot verify the presence of the refresh_token cookie in JavaScript
+      // because it is set with the HttpOnly flag for security. 
+      // We assume if the API returned 200 OK, the Set-Cookie header was processed by the browser.
+
+      return loginData;
+    } catch (error) {
+      console.error("Login error details:", error);
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+      }
+      ApiErrorHandler.logError(error, "AuthService.login");
+      throw new Error(ApiErrorHandler.parseError(error));
+    }
+  }
+
+  /**
+   * Logout user
+   */
+  static async logout(): Promise<void> {
+    try {
+      await apiClient.post(API_CONFIG.ENDPOINTS.AUTH.LOGOUT, {}, {
+        withCredentials: true, // Send cookies with request
+      });
+      
+      // Clear access token from localStorage
+      localStorage.removeItem("auth_token");
+      
+      // Clear refresh token cookie
+      document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      console.log("Tokens cleared");
+    } catch (error) {
+      ApiErrorHandler.logError(error, "AuthService.logout");
+      throw new Error(ApiErrorHandler.parseError(error));
+    }
+  }
+
+  /**
+   * Refresh authentication token
+   * Refresh token should be in cookie (sent automatically by browser)
+   */
+  static async refreshToken(): Promise<RefreshTokenResponse> {
+    try {
+      // Send empty body - refresh token is in cookie
+      const response = await apiClient.post<ApiResponse<RefreshTokenResponse>>(
+        API_CONFIG.ENDPOINTS.AUTH.REFRESH,
+        {},
+        {
+          withCredentials: true, // Important: sends cookies with request
+        }
+      );
+      
+      // Handle different response formats
+      const tokenData = response.data.data || response.data;
+      const newAccessToken = tokenData.token || tokenData.access_token;
+      const newRefreshToken = tokenData.refreshToken || tokenData.refresh_token;
+      
+      // Update access token in localStorage
+      if (newAccessToken) {
+        localStorage.setItem("auth_token", newAccessToken);
+        console.log("Access token refreshed");
+      }
+      
+      // Update refresh token in cookie if provided
+      if (newRefreshToken) {
+        document.cookie = `refresh_token=${newRefreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+        console.log("Refresh token updated");
+      }
+      
+      return tokenData;
+    } catch (error) {
+      ApiErrorHandler.logError(error, "AuthService.refreshToken");
+      throw new Error(ApiErrorHandler.parseError(error));
+    }
+  }
+
+  /**
+   * Get current user information
+   */
+  static async getCurrentUser(): Promise<UserResponse> {
+    try {
+      const response = await apiClient.get<UserResponse>(
+        API_CONFIG.ENDPOINTS.AUTH.ME
+      );
+      
+      return response.data;
+    } catch (error) {
+      ApiErrorHandler.logError(error, "AuthService.getCurrentUser");
+      throw new Error(ApiErrorHandler.parseError(error));
+    }
+  }
+}

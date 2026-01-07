@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { TranslationService, GlossaryService } from "@/api/services";
 import {
   Upload,
   FileText,
@@ -25,34 +26,52 @@ import { PageTransition, SlideUp } from "@/components/ui/page-transition";
 import { FileCard } from "@/components/file-card";
 import { cn } from "@/lib/utils";
 
-const quickStats = [
-  {
-    label: "Total Translations",
-    value: "1,248",
-    change: "+12%",
-    icon: FileText,
-    trend: "up",
-  },
-  {
-    label: "Active Glossaries",
-    value: "8",
-    change: "Stable",
-    icon: BookOpen,
-    trend: "neutral",
-  },
-  {
-    label: "Translations This Month",
-    value: "156",
-    change: "+24%",
-    icon: Calendar,
-    trend: "up",
-  },
-];
 
 export default function DashboardPage() {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [stats, setStats] = useState({
+    totalTranslations: 0,
+    activeGlossaries: 0,
+    translationsThisMonth: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Fetch stats on load
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [jobs, glossaries] = await Promise.all([
+          TranslationService.getTranslationHistory(),
+          GlossaryService.getGlossaries(),
+        ]);
+
+        const now = new Date();
+        const thisMonth = now.getMonth();
+        const thisYear = now.getFullYear();
+
+        const jobsThisMonth = jobs.filter((job) => {
+          const dateStr = job.submittedAt || job.startedAt;
+          if (!dateStr) return false;
+          const jobDate = new Date(dateStr);
+          return jobDate.getMonth() === thisMonth && jobDate.getFullYear() === thisYear;
+        }).length;
+
+        setStats({
+          totalTranslations: jobs.length,
+          activeGlossaries: glossaries.length,
+          translationsThisMonth: jobsThisMonth,
+        });
+      } catch (error) {
+        console.error("Failed to fetch dashboard stats", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles(acceptedFiles);
@@ -90,6 +109,30 @@ export default function DashboardPage() {
     setFiles([]);
   };
 
+  const currentStats = [
+    {
+      label: "Total Translations",
+      value: loading ? "..." : stats.totalTranslations.toLocaleString(),
+      change: "Lifetime", 
+      icon: FileText,
+      trend: "neutral",
+    },
+    {
+      label: "Active Glossaries",
+      value: loading ? "..." : stats.activeGlossaries.toString(),
+      change: "Total", 
+      icon: BookOpen,
+      trend: "neutral",
+    },
+    {
+      label: "Translations This Month",
+      value: loading ? "..." : stats.translationsThisMonth.toString(),
+      change: "This Month", 
+      icon: Calendar,
+      trend: "neutral",
+    },
+  ];
+
   return (
     <PageTransition className="space-y-8">
       {/* Welcome Section */}
@@ -123,7 +166,7 @@ export default function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-3">
-        {quickStats.map((stat, i) => {
+        {currentStats.map((stat, i) => {
           // Determine the navigation path based on the stat label
           let href = "/dashboard/history";
           if (stat.label === "Active Glossaries") {
@@ -157,7 +200,7 @@ export default function DashboardPage() {
                       >
                         {stat.change}
                       </span>{" "}
-                      from last month
+                      {/* from last month - Removed specific comparison */}
                     </p>
                   </CardContent>
                 </Card>
@@ -167,8 +210,8 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <div className="space-y-6">
-        {/* Quick Upload - Expanded */}
+      <div className="space-y-6 max-w-full">
+        {/* Quick Upload */}
         <Card className="w-full border-2 border-dashed border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20">
           <CardHeader>
             <CardTitle>Quick Upload</CardTitle>
