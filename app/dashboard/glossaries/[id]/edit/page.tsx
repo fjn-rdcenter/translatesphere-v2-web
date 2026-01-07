@@ -9,6 +9,7 @@ import { GlossaryService } from "@/api/services";
 import { GlossaryResponse } from "@/api/types";
 import { GlossaryForm } from "@/components/glossary/glossary-form";
 import { RefreshCw } from "lucide-react";
+import { getLanguageName } from "@/lib/utils";
 
 export default function EditGlossaryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -68,7 +69,7 @@ export default function EditGlossaryPage({ params }: { params: Promise<{ id: str
           <div>
             <h1 className="text-3xl font-serif font-semibold text-foreground">Edit Glossary</h1>
             <p className="mt-1 text-muted-foreground">
-              {glossary.sourceLanguage} → {glossary.targetLanguage}
+              {getLanguageName(glossary.sourceLanguage)} → {getLanguageName(glossary.targetLanguage)}
             </p>
           </div>
         </div>

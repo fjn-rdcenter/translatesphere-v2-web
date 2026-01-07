@@ -35,6 +35,7 @@ import { GlossaryDetailResponse } from "@/api/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { getLanguageName } from "@/lib/utils";
 
 interface EditGlossaryDialogProps {
   open: boolean;
@@ -417,13 +418,13 @@ export function EditGlossaryDialog({
                             <div className="space-y-1.5">
                                 <Label className="text-xs uppercase font-bold text-muted-foreground">Source Lang</Label>
                                 <div className="h-10 px-3 py-2 text-sm bg-muted/50 rounded-md border text-muted-foreground flex items-center">
-                                    {glossary.sourceLanguage.toUpperCase()}
+                                    {getLanguageName(glossary.sourceLanguage)}
                                 </div>
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs uppercase font-bold text-muted-foreground">Target Lang</Label>
                                 <div className="h-10 px-3 py-2 text-sm bg-muted/50 rounded-md border text-muted-foreground flex items-center">
-                                    {glossary.targetLanguage.toUpperCase()}
+                                    {getLanguageName(glossary.targetLanguage)}
                                 </div>
                             </div>
                         </div>

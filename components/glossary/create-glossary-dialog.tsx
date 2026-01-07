@@ -275,7 +275,7 @@ export function CreateGlossaryDialog({
   };
 
   const hasDuplicates = terms.some((t, index) => terms.findIndex(t2 => t2.source.trim() === t.source.trim()) !== index);
-  const isValid = name.trim().length > 0 && !hasDuplicates;
+  const isValid = name.trim().length > 0 && terms.length > 0 && !hasDuplicates;
   
   // Helper to identify duplicates for highlighting
   const getDuplicateStatus = (termSource: string, termId: string) => {

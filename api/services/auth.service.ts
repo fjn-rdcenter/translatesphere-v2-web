@@ -28,7 +28,7 @@ export class AuthService {
       formData.append("client_id", credentials.client_id || "string");
       formData.append("client_secret", credentials.client_secret || "");
 
-      console.log("🔐 Attempting login to:", API_CONFIG.ENDPOINTS.AUTH.LOGIN);
+      console.log("Attempting login to:", API_CONFIG.ENDPOINTS.AUTH.LOGIN);
       
       const response = await apiClient.post<ApiResponse<LoginResponse>>(
         API_CONFIG.ENDPOINTS.AUTH.LOGIN,
@@ -41,7 +41,7 @@ export class AuthService {
         }
       );
       
-      console.log("✅ Login response:", response.data);
+      console.log("Login response:", response.data);
       
       // Handle different response formats
       const loginData = response.data.data || response.data;
@@ -51,25 +51,31 @@ export class AuthService {
       // Store access token in localStorage
       if (token) {
         localStorage.setItem("auth_token", token);
-        console.log("💾 Access token stored in localStorage");
+        console.log("Access token stored in localStorage");
       }
       
       // Store refresh token in cookie (if not already set by backend)
+      let cookieExists = document.cookie.includes('refresh_token');
+      
       if (refreshToken) {
         // Check if backend already set the cookie
-        const cookieExists = document.cookie.includes('refresh_token');
         if (!cookieExists) {
           // Set cookie with secure flags
           document.cookie = `refresh_token=${refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
-          console.log("🍪 Refresh token stored in cookie");
+          console.log("Refresh token stored in cookie");
+          cookieExists = true;
         } else {
-          console.log("🍪 Refresh token already set by backend");
+          console.log("Refresh token already set by backend");
         }
       }
-      
+
+      // NOTE: We cannot verify the presence of the refresh_token cookie in JavaScript
+      // because it is set with the HttpOnly flag for security. 
+      // We assume if the API returned 200 OK, the Set-Cookie header was processed by the browser.
+
       return loginData;
     } catch (error) {
-      console.error("❌ Login error details:", error);
+      console.error("Login error details:", error);
       if (error instanceof Error) {
         console.error("Error message:", error.message);
       }
@@ -92,7 +98,7 @@ export class AuthService {
       
       // Clear refresh token cookie
       document.cookie = "refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      console.log("🧹 Tokens cleared");
+      console.log("Tokens cleared");
     } catch (error) {
       ApiErrorHandler.logError(error, "AuthService.logout");
       throw new Error(ApiErrorHandler.parseError(error));
@@ -122,13 +128,13 @@ export class AuthService {
       // Update access token in localStorage
       if (newAccessToken) {
         localStorage.setItem("auth_token", newAccessToken);
-        console.log("🔄 Access token refreshed");
+        console.log("Access token refreshed");
       }
       
       // Update refresh token in cookie if provided
       if (newRefreshToken) {
         document.cookie = `refresh_token=${newRefreshToken}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
-        console.log("🍪 Refresh token updated");
+        console.log("Refresh token updated");
       }
       
       return tokenData;

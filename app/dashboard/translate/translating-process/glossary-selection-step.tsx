@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, getLanguageName } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlossaryResponse, GlossaryDetailResponse } from "@/api/types";
 import { GlossaryService } from "@/api/services";
@@ -364,7 +364,7 @@ export function GlossarySelectionStep({
                             {isValidating && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {glossary.sourceLanguage} → {glossary.targetLanguage} • {glossary.termCount} terms
+                            {getLanguageName(glossary.sourceLanguage)} → {getLanguageName(glossary.targetLanguage)} • {glossary.termCount} terms
                           </p>
                         </div>
                         

@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileCard } from "@/components/file-card";
 import { TranslationStatus } from "../page";
 import { SUPPORTED_LANGUAGES } from "@/lib/constants";
+import { getLanguageName } from "@/lib/utils";
 
 interface TranslationExecutionStepProps {
   currentStep: number;
@@ -126,8 +127,8 @@ export function TranslationExecutionStep({
                         <div>
                           <p className="font-medium text-sm">{glossary.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {glossary.sourceLanguage} →{" "}
-                            {glossary.targetLanguage}
+                            {getLanguageName(glossary.sourceLanguage)} →{" "}
+                            {getLanguageName(glossary.targetLanguage)}
                           </p>
                         </div>
                         <div className="text-xs font-medium bg-secondary px-2 py-1 rounded-md">
