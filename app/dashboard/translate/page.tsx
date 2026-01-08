@@ -33,7 +33,7 @@ function TranslatePageContent() {
   const [currentStep, setCurrentStep] = useState(0);
   
   // Translation Config
-  const [sourceLanguage, setSourceLanguage] = useState("ja");
+  const [sourceLanguage, setSourceLanguage] = useState("jp");
   const [targetLanguage, setTargetLanguage] = useState("vi");
   const [selectedGlossaries, setSelectedGlossaries] = useState<string[]>([]);
   const [glossaryOption, setGlossaryOption] = useState<
@@ -330,7 +330,7 @@ function TranslatePageContent() {
     setDocumentId(null);
     setJobId(null);
     setFileToUpload(null);
-    setSourceLanguage("ja");
+    setSourceLanguage("jp");
     setTargetLanguage("vi");
     setSelectedGlossaries([]);
     setGlossaryOption("none");

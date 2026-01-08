@@ -58,7 +58,7 @@ export function CreateGlossaryDialog({
   open,
   onOpenChange,
   onSuccess,
-  defaultSourceLanguage = "ja",
+  defaultSourceLanguage = "jp",
   defaultTargetLanguage = "vi",
 }: CreateGlossaryDialogProps) {
   const { toast } = useToast();

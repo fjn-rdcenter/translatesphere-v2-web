@@ -4,7 +4,7 @@
  */
 
 export const API_CONFIG = {
-  BASE_URL: "http://localhost:18000",
+  BASE_URL: "http://172.16.6.10:18000",
   TIMEOUT: 30000, // 30 seconds
   
   // API Endpoints - Update these to match your backend routes
