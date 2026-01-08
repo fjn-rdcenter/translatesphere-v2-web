@@ -76,7 +76,7 @@ export function GlossaryForm({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("jp");
-  const [targetLanguage, setTargetLanguage] = useState("vi");
+  const [targetLanguage, setTargetLanguage] = useState("vn");
   const [activeTab, setActiveTab] = useState("manual");
   const [terms, setTerms] = useState<UITerm[]>([
     { id: "1", source: "", target: "" },
