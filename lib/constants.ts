@@ -1,5 +1,5 @@
 export const SUPPORTED_LANGUAGES = [
-  { code: "vi", name: "Vietnamese" },
+  { code: "vn", name: "Vietnamese" },
   { code: "en", name: "English" },
   { code: "jp", name: "Japanese" },
 ] as const;
